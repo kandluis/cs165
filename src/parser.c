@@ -65,8 +65,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
     if (d->g == CREATE_DB) {
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str));
-        strncpy(str_cpy, str, strlen(str));
+        char* str_cpy = malloc(strlen(str) + 1);
+        strncpy(str_cpy, str, strlen(str) + 1);
 
         // This gives us everything inside the (db, <db_name>)
         strtok(str_cpy, open_paren);
@@ -85,6 +85,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         db* db1 = NULL;
         status s = create_db(db_name, &db1);
         if (s.code != OK) {
+            log_err("Error creating database: %s\n", s.error_message);
             // Something went wrong
         }
 
