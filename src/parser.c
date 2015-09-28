@@ -5,6 +5,7 @@
 #include <ctype.h>
 
 #include "db.h"
+#include "include/var_store.h"
 
 // Trims the whitespace
 char* trim(char *str);
@@ -56,6 +57,9 @@ status parse_command_string(char* str, dsl** commands, db_operator* op)
 
 status parse_dsl(char* str, dsl* d, db_operator* op)
 {
+    // TODO(luisperez): Use the op param.
+    (void) op;
+
     // Use the delimiters to parse out the string
     char open_paren[2] = "(";
     char close_paren[2] = ")";
@@ -82,17 +86,19 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         log_info("create_db(%s)\n", db_name);
 
         // Here, we can create the DB using our parsed info!
-        db* db1 = NULL;
-        status s = create_db(db_name, &db1);
-        if (s.code != OK) {
-            log_err("Error creating database: %s\n", s.error_message);
-            // Something went wrong
+        // First, we check to see if we've already created the db.
+        db* db1 = get_var(db_name);
+        if (!db1) {
+            status s = create_db(db_name, &db1);
+            if (s.code != OK) {
+                log_err("Error creating database: %s\n", s.error_message);
+                free(str_cpy);
+                return s;
+            }
+            else {
+                set_var(db_name, db1);
+            }
         }
-
-        // TODO(USER): You must track your variable in a variable pool now!
-        // This means later on when I refer to <db_name>, I should get this
-        // same db*.  You can do this in many ways, including associating
-        // <db_name> -> db1
 
         // Free the str_cpy
         free(str_cpy);
@@ -136,27 +142,34 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         log_info("create_table(%s, %s, %d)\n", full_name, db_name, count);
 
-        // Here, we can create the table using our parsed info!
-        // TODO(USER): You MUST get the original db* associated with <db_name>
-        // db* db1 = NULL;
+        // Find database.
+        status ret;
+        db* db1 = get_var(db_name);
+        if (!db1) {
+            log_err("No database found. %s: error at line: %d\n", __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Database does not exist.";
+            return ret;
+        }
 
-        // TODO(USER): Uncomment this section after you're able to grab the db1
-        // table* tbl1 = NULL;
-        // status s = create_table(db1, full_name, count, &tbl1);
-        // if (s.code != OK) {
-        //     // Something went wrong
-        // }
-
-        // TODO(USER): You must track your variable in a variable pool now!
-        // This means later on when I refer to <full_name>, I should get this
-        // same table*.  You can do this in many ways, including associating
-        // <full_name> -> tbl1
+        // TODO(luisperez): We only support one db for now, so no duplicate names allowed.
+        table* tbl1 = get_var(tbl_name);
+        if (!tbl1) {
+            status s = create_table(db1, full_name, count, &tbl1);
+            if (s.code != OK) {
+                log_err("Table creation failed. %s: error at line: %d\n", __func__, __LINE__);
+                free(str_cpy);
+                return s;
+            }
+            else {
+                set_var(tbl_name, tbl1);
+            }
+        }
 
         // Free the str_cpy
         free(str_cpy);
 
         // No db_operator required, since no query plan
-        status ret;
         ret.code = OK;
         return ret;
     } else if (d->g == CREATE_COLUMN) {
@@ -178,7 +191,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         // This gives us <tbl_name>, we will need this to create the full name
         char* tbl_name = strtok(NULL, delimiter);
 
-        // Generate the full name using <db_name>.<tbl_name>
+        // Generate the full name using <tbl_name>.<column_name>
         char full_name[strlen(tbl_name) + strlen(col_name) + 1];
         strncat(full_name, tbl_name, strlen(tbl_name));
         strncat(full_name, ".", 1);
@@ -190,27 +203,34 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         log_info("create_column(%s, %s, %s)\n", full_name, tbl_name, sorting_str);
 
-        // Here, we can create the column using our parsed info!
-        // TODO(USER): You MUST get the original table* associated with <tbl_name>
-        // table* table1 = NULL;
+        // Grab the table, which should already exist.
+        // TODO(luisperez) : Currently only support one database.
+        status ret;
+        table* tbl1 = get_var(tbl_name);
+        if (!tbl1) {
+            log_err("No table found. %s: error at line: %d\n", __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Table does not exist.";
+            return ret;
+        }
 
-        // TODO(USER): Uncomment this section after you're able to grab the tbl1
-        // column* col1 = NULL;
-        // status s = create_column(tbl1, full_name, &col1);
-        // if (s.code != OK) {
-        //     // Something went wrong
-        // }
-
-        // TODO(USER): You must track your variable in a variable pool now!
-        // This means later on when I refer to <full_name>, I should get this
-        // same col*.  You can do this in many ways, including associating
-        // <full_name> -> col1
+        column* col1 = get_var(full_name);
+        if (!col1) {
+            status s = create_column(tbl1, full_name, &col1);
+            if (s.code != OK) {
+                log_err("Column creation failed. %s: error at line: %d\n", __func__, __LINE__);
+                free(str_cpy);
+                return s;
+            }
+            else {
+                set_var(full_name, tbl1);
+            }
+        }
 
         // Free the str_cpy
         free(str_cpy);
 
         // No db_operator required, since no query plan
-        status ret;
         ret.code = OK;
         return ret;
     }

@@ -10,6 +10,7 @@
 #define SRC_INCLUDE_HASH_MAP_H_
 
 #include <stdbool.h>
+#include <stdlib.h>
 
 #define LINK_SIZE 1024  // Size of a continuous link.
 #define BUCKETS 1024  // Size of the hashmap.
@@ -31,8 +32,8 @@ typedef struct kv_pair {
 typedef struct cont_node {
   size_t size;  // Maximum number of kv_pairs.
   int count; // Filled lsots.
-  kv_pair link[];
-  struct link* next;  // Next data structure.
+  kv_pair link[LINK_SIZE];
+  struct cont_node* next;  // Next data structure.
 } cont_node;
 
 /**
@@ -40,19 +41,19 @@ typedef struct cont_node {
 **/
 typedef struct hash_map {
   size_t size;
-  buckets[BUCKETS];
+  cont_node* buckets[BUCKETS];
 } hash_map;
 
 /**
 * Given a map and a key,value pair, associates the key with the value.
 * Returns true on success, false if they key is already present.
 **/
-bool insert(hash_map* map, const char* key, const void* value);
+bool insert_into_map(hash_map* map, const char* key, const void* value);
 
 /**
 * Given a map and a key, returns a pointer to the associated value if found in
 * the hash_map. Returns null if not found.
 */
-void* find(hash_map* map, const char* key);
+void* find_in_map(hash_map* map, const char* key);
 
 #endif  // SRC_INCLUDE_HASH_MAP_H_

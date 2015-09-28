@@ -3,6 +3,7 @@
 
 #include "cs165_api.h"
 #include "dsl.h"
+#include "hash_map.h"
 #include "utils.h"
 
 // This parses the command string and then update the db_operator if it requires
