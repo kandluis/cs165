@@ -9,13 +9,13 @@
 // Global data structure to keep track of variables.
 hash_map var_mapping;
 
-void* get_var(const char* var)
+void* get_var(char* var)
 {
   return find_in_map(&var_mapping, var);
 }
 
 // Could fail catastrophically if we run out of memory.
-void set_var(const char* var, void* value)
+void set_var(char* var, void* value)
 {
   // We log failures.
   if (!insert_into_map(&var_mapping, var, value)) {
