@@ -25,7 +25,7 @@ void cs165_log(FILE* out, const char *format, ...);
 void log_err(const char *format, ...);
 
 // log_info(format, ...)
-// Writes the string from @format to stderr, extendable for
+// Writes the string from @format to stdout, extendable for
 // additional parameters. Like cs165_log, but specifically to stdout.
 // Only use this when appropriate (e.g., denoting a specific checkpoint),
 // else defer to using printf.

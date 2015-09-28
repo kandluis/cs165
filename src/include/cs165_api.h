@@ -82,7 +82,7 @@ typedef struct column_index {
 typedef struct column {
     char* name;
     int* data;
-    column_index *index;
+    column_index* index;
 } column;
 
 /**
@@ -90,7 +90,7 @@ typedef struct column {
  * Defines a table structure, which is composed of multiple columns.
  * We do not require you to dynamically manage the size of your tables,
  * although you are free to append to the struct if you would like to (i.e.,
- * in clude a size_t table_size).
+ * include a size_t table_size).
  * name, the name associated with the table. Table names must be unique
  *     within a database, but tables from different databases can have the same
  *     name.
@@ -176,15 +176,15 @@ typedef enum Junction {
  **/
 typedef struct comparator {
     int p_val;
-    column *col;
+    column* col;
     ComparatorType type;
-    struct comparator *next_comparator;
+    struct comparator* next_comparator;
     Junction mode;
 } comparator;
 
 typedef struct result {
     size_t num_tuples;
-    int *payload;
+    int* payload;
 } result;
 
 typedef enum Aggr {
@@ -243,14 +243,14 @@ typedef struct db_operator {
     column** columns;
 
     // Internmediaties used for PROJECT, DELETE, HASH_JOIN
-    int *pos1;
+    int* pos1;
     // Needed for HASH_JOIN
-    int *pos2;
+    int* pos2;
 
     // For insert/delete operations, we only use value1;
     // For update operations, we update value1 -> value2;
-    int *value1;
-    int *value2;
+    int* value1;
+    int* value2;
 
     // This includes several possible fields that may be used in the operation.
     Aggr agg;
