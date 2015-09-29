@@ -94,6 +94,7 @@ typedef struct column {
  * name, the name associated with the table. Table names must be unique
  *     within a database, but tables from different databases can have the same
  *     name.
+ * - col_index, the current column index in the table.
  * - col_count, the number of columns in the table
  * - col, this is the pointer to an array of columns contained in the table.
  * - length, the size of the columns in the table.
@@ -115,6 +116,7 @@ typedef struct table {
 typedef struct db {
     char* name;
     size_t table_count;
+    size_t tables_available;
     table* tables;
 } db;
 

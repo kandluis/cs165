@@ -1,4 +1,9 @@
+// Copyright (2015) - Luis Perez
+
+#include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "utils.h"
 
@@ -43,6 +48,13 @@ void log_info(const char *format, ...) {
 #else
     (void) format;
 #endif
+}
+
+void* resize(void* data, size_t osize, size_t nsize) {
+    assert(osize <= nsize);
+    void* ndata = malloc(sizeof(char) * nsize);
+    memcpy(data, ndata, osize);
+    return ndata;
 }
 
 

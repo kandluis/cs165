@@ -22,7 +22,7 @@ cont_node* add_element(cont_node* head, char* key, void* value)
 {
     // Check if current node is full or non-existent.
     cont_node* new_head = NULL;
-    if (!head || head->count >= head->size) {
+    if (!head) {
         new_head = malloc(sizeof(cont_node));
         new_head->next = head;
         new_head->size = LINK_SIZE;

@@ -33,4 +33,9 @@ void log_err(const char *format, ...);
 // Usage: log_info("Command received: %s", command_string);
 void log_info(const char *format, ...);
 
+// Takes a pointer to data and resizes it to a new contiguous section of memory.
+// osize is the old size (in bytes) of the data to be copied and nsize is the size
+// of the new space.
+void* resize(void* data, size_t osize, size_t nsize);
+
 #endif /* __UTILS_H__ */

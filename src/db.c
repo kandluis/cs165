@@ -17,6 +17,7 @@ status create_db(const char* db_name, db** db) {
 
     (*db)->name = db_name;
     (*db)->table_count = 0;
+    (*db)->tables_available = 0;
     (*db)->tables = NULL;
 
     status s;
@@ -46,10 +47,27 @@ status sync_db(db* db)
 
 status create_table(db* db, const char* name, size_t num_columns, table** table)
 {
-    (void) db;
-    (void) name;
-    (void) num_columns;
-    (void) table;
+    // TODO(luisperez): Need to check to see if the table already exists.
+
+    // Need to allocate space for the table.
+    if (*table == NULL) {
+        // We have no space.
+        if (db->tables_available <= 0) {
+            size_t max_table_count = 2 * db->table_count + 1;
+            db->tables_available = max_table_count - db->table_count;
+            db->tables = resize(db->tables, sizeof(table) * db->table_count,
+                sizeof(table) * max_table_count);
+        }
+        // Assign the table to the next available space in the database.
+        *table = &db->tables[db->table_count++];
+    }
+
+    // Populate table.
+    (*table)->name = name;
+    (*table)->col_count = 0;
+    (*table)->col = malloc(sizeof(column) * num_columns);
+    (*table)->length = 0;
+
     return global;
 }
 
@@ -60,11 +78,16 @@ status drop_table(db* db, table* table)
     return global;
 }
 
-status create_column(table *table, const char* name, column** col)
+status create_column(table* table, const char* name, column** col)
 {
-    (void) table;
-    (void) name;
-    (void) col;
+    // TODO(luisperez): Need to check if the column already exists.
+
+    // Need to allocate space for the column.
+    if (*col == NULL) {
+        // Assign the column to the next available space in the database.
+        *col = &table->col[table->col_count++];
+    }
+    (*col)->name = name;
     return global;
 }
 
