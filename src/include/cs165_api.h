@@ -80,7 +80,7 @@ typedef struct column_index {
  * tracked in the table (length).
  **/
 typedef struct column {
-    char* name;
+    const char* name;
     int* data;
     column_index* index;
 } column;
@@ -100,9 +100,9 @@ typedef struct column {
  * - length, the size of the columns in the table.
  **/
 typedef struct table {
-    char* name;
+    const char* name;
     size_t col_count;
-    column* col;
+    column** col;
     size_t length;
 } table;
 
@@ -114,10 +114,10 @@ typedef struct table {
  * - tables: the pointer to the array of tables contained in the db.
  **/
 typedef struct db {
-    char* name;
+    const char* name;
     size_t table_count;
     size_t tables_available;
-    table* tables;
+    table** tables;
 } db;
 
 /**
