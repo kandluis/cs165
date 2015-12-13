@@ -1,4 +1,4 @@
--- Needs test29.dsl to have been executed first.
+-- Needs test08.dsl and test29.dsl to have been executed first.
 -- Correctness test: Update values and run a simple query
 -- 
 -- UPDATE tbl2 SET col1 = -10 WHERE col1 = -1;
@@ -8,3 +8,4 @@
 -- UPDATE tbl2 SET col1 = -50 WHERE col1 = -5;
 --
 -- SELECT col1 FROM tbl2 WHERE col7 > -100 AND col7 < 100000000;
+--
