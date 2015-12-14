@@ -94,7 +94,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                 log_err("Error creating database.\n");
 
                 ret.code = ERROR;
-                ret.error_message = "Database creation failed.";
+                ret.error_message = "Database creation failed.\n";
             }
             else {
                 set_var(db_name, db1);
@@ -104,7 +104,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         else {
             log_err("Database %s already exists!", db_name);
             ret.code = ERROR;
-            ret.error_message = "Database already exists!";
+            ret.error_message = "Database already exists!\n";
         }
 
         (void) op;
@@ -155,7 +155,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             log_err("No database found. %s: error at line: %d\n", __func__, __LINE__);
 
             ret.code = ERROR;
-            ret.error_message = "Database does not exist.";
+            ret.error_message = "Database does not exist.\n";
         }
         else {
             // We now support multiple dbs.
@@ -166,7 +166,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                     log_err("Table creation failed. %s: error at line: %d\n", __func__, __LINE__);
 
                     ret.code = ERROR;
-                    ret.error_message = "Table creation failed";
+                    ret.error_message = "Table creation failed.\n";
                 }
                 else {
                     set_var(full_name, tbl1);
@@ -176,7 +176,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             else {
                 log_err("Table %s already exists!", full_name);
                 ret.code = ERROR;
-                ret.error_message = "Table already exists!";
+                ret.error_message = "Table already exists!\n";
             }
         }
 
@@ -226,7 +226,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         if (!tbl1) {
             log_err("No table found. %s: error at line: %d\n", __func__, __LINE__);
             ret.code = ERROR;
-            ret.error_message = "Table does not exist.";
+            ret.error_message = "Table does not exist.\n";
             return ret;
         }
         else {
@@ -237,7 +237,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                 if (s.code != OK) {
                     log_err("Column creation failed. %s: error at line: %d\n", __func__, __LINE__);
                     ret.code = ERROR;
-                    ret.error_message = "Column creation failed!";
+                    ret.error_message = "Column creation failed!\n";
                 }
                 else {
                     ret.code = OK;
@@ -247,7 +247,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             else {
                 log_err("Column %s already exists!", full_name);
                 ret.code = ERROR;
-                ret.error_message = "Column already exists!";
+                ret.error_message = "Column already exists!\n";
             }
         }
 
