@@ -38,4 +38,8 @@ void log_info(const char *format, ...);
 // of the new space.
 void* resize(void* data, size_t osize, size_t nsize);
 
+// Takes a pointer to a string and creates a copy. The caller is responsible for
+// freeing the memory at the return pointer location.
+char* copystr(const char* src);
+
 #endif /* __UTILS_H__ */

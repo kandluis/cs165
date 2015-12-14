@@ -49,7 +49,8 @@ db_operator* parse_command(message* recv_message, message* send_message) {
     // Here, we give you a default parser, you are welcome to replace it with anything you want
     status parse_status = parse_command_string(recv_message->payload, dsl_commands, dbo);
     if (parse_status.code != OK) {
-        // Something went wrong
+        log_err("Error parsing command! %s", parse_status.error_message);
+        return NULL;
     }
 
     return dbo;

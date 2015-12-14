@@ -7,6 +7,9 @@
 #include "db.h"
 #include "include/var_store.h"
 
+// TODO(luisperez): Are we supposed to return an error if the "thing" we are
+// creating already exists?
+
 // Prototype for Helper function that executes that actual parsing after
 // parse_command_string has found a matching regex.
 status parse_dsl(char* str, dsl* d, db_operator* op);
@@ -83,27 +86,33 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // Here, we can create the DB using our parsed info!
         // First, we check to see if we've already created the db.
+        status ret;
         db* db1 = get_var(db_name);
         if (!db1) {
             status s = create_db(db_name, &db1);
             if (s.code != OK) {
-                log_err("Error creating database: %s\n", s.error_message);
-                free(str_cpy);
-                return s;
+                log_err("Error creating database.\n");
+
+                ret.code = ERROR;
+                ret.error_message = "Database creation failed.";
             }
             else {
                 set_var(db_name, db1);
+                ret.code = OK;
             }
         }
+        else {
+            log_err("Database %s already exists!", db_name);
+            ret.code = ERROR;
+            ret.error_message = "Database already exists!";
+        }
 
-        // Free the str_cpy
-        free(str_cpy);
-
-        // No db_operator required, since no query plan
         (void) op;
-        status ret;
-        ret.code = OK;
+        free(str_cpy);
+        str_cpy = NULL;
         return ret;
+
+
     } else if (d->g == CREATE_TABLE) {
         // Create a working copy, +1 for '\0'
         char* str_cpy = malloc(strlen(str) + 1);
@@ -124,7 +133,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         char* db_name = strtok(NULL, comma);
 
         // Generate the full name using <db_name>.<tbl_name>
-        char* full_name = (char*)malloc(sizeof(char)*(strlen(tbl_name) + strlen(db_name) + 2));
+        char* full_name = (char*)calloc(strlen(tbl_name) + strlen(db_name) + 2, sizeof(char));
 
         strncat(full_name, db_name, strlen(db_name));
         strncat(full_name, ".", 1);
@@ -136,7 +145,6 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         if (count_str != NULL) {
             count = atoi(count_str);
         }
-        (void) count;
 
         log_info("create_table(%s, %s, %d)\n", full_name, db_name, count);
 
@@ -145,22 +153,30 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         db* db1 = get_var(db_name);
         if (!db1) {
             log_err("No database found. %s: error at line: %d\n", __func__, __LINE__);
+
             ret.code = ERROR;
             ret.error_message = "Database does not exist.";
-            return ret;
         }
+        else {
+            // We now support multiple dbs.
+            table* tbl1 = get_var(full_name);
+            if (!tbl1) {
+                status s = create_table(db1, full_name, count, &tbl1);
+                if (s.code != OK) {
+                    log_err("Table creation failed. %s: error at line: %d\n", __func__, __LINE__);
 
-        // TODO(luisperez): We only support one db for now, so no duplicate names allowed.
-        table* tbl1 = get_var(tbl_name);
-        if (!tbl1) {
-            status s = create_table(db1, full_name, count, &tbl1);
-            if (s.code != OK) {
-                log_err("Table creation failed. %s: error at line: %d\n", __func__, __LINE__);
-                free(str_cpy);
-                return s;
+                    ret.code = ERROR;
+                    ret.error_message = "Table creation failed";
+                }
+                else {
+                    set_var(full_name, tbl1);
+                    ret.code = OK;
+                }
             }
             else {
-                set_var(tbl_name, tbl1);
+                log_err("Table %s already exists!", full_name);
+                ret.code = ERROR;
+                ret.error_message = "Table already exists!";
             }
         }
 
@@ -170,8 +186,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         str_cpy=NULL;
         full_name=NULL;
 
-        // No db_operator required, since no query plan
-        ret.code = OK;
+        (void) op;
         return ret;
     } else if (d->g == CREATE_COLUMN) {
         // Create a working copy, +1 for '\0'
@@ -193,7 +208,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         char* tbl_name = strtok(NULL, comma);
 
         // Generate the full name using <db_name>.<tbl_name>
-        char* full_name=(char*)malloc(sizeof(char)*(strlen(tbl_name) + strlen(col_name) + 2));
+        char* full_name=(char*)calloc(strlen(tbl_name) + strlen(col_name) + 2, sizeof(char));
 
         strncat(full_name, tbl_name, strlen(tbl_name));
         strncat(full_name, ".", 1);
@@ -206,26 +221,33 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         log_info("create_column(%s, %s, %s)\n", full_name, tbl_name, sorting_str);
 
         // Grab the table, which should already exist.
-        // TODO(luisperez) : Currently only support one database.
         status ret;
-        table* tbl1 = get_var(tbl_name);
+        table* tbl1 = get_var(full_name);
         if (!tbl1) {
             log_err("No table found. %s: error at line: %d\n", __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Table does not exist.";
             return ret;
         }
-
-        column* col1 = get_var(full_name);
-        if (!col1) {
-            status s = create_column(tbl1, full_name, &col1);
-            if (s.code != OK) {
-                log_err("Column creation failed. %s: error at line: %d\n", __func__, __LINE__);
-                free(str_cpy);
-                return s;
+        else {
+            // Check to see if column already exists.
+            column* col1 = get_var(full_name);
+            if (!col1) {
+                status s = create_column(tbl1, full_name, &col1);
+                if (s.code != OK) {
+                    log_err("Column creation failed. %s: error at line: %d\n", __func__, __LINE__);
+                    ret.code = ERROR;
+                    ret.error_message = "Column creation failed!";
+                }
+                else {
+                    ret.code = OK;
+                    set_var(full_name, tbl1);
+                }
             }
             else {
-                set_var(full_name, tbl1);
+                log_err("Column %s already exists!", full_name);
+                ret.code = ERROR;
+                ret.error_message = "Column already exists!";
             }
         }
 
@@ -236,6 +258,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         full_name=NULL;
 
         // No db_operator required, since no query plan
+        (void) op;
+
         ret.code = OK;
         return ret;
     }

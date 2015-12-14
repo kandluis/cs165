@@ -8,19 +8,30 @@ status global;
 // TODO(USER): Here we provide an incomplete implementation of the create_db.
 // There will be changes that you will need to include here.
 status create_db(const char* db_name, db** db) {
+    // Store status for return.
+    status s;
+
     if (*db == NULL) {
         int attempts = 0;
         while (!(*db = malloc(sizeof(db))) && attempts < MAX_ATTEMPTS) {
-          log_info("Database creation failed. Attempt %i.\n", attempts);
+          log_info("Database %s creation failed. Attempt %i.\n", db_name, attempts);
+          attempts++;
+        }
+        // We have failed all attempts
+        if (attempts == MAX_ATTEMPTS) {
+            log_err("Database %s creation failed after repeated attempts! %s: error at line %d\n",
+                db_name, __func__, __LINE__);
+            s.code = ERROR;
+            return s;
         }
     }
 
-    (*db)->name = db_name;
+    // Set up the database.
+    (*db)->name = copystr(db_name);
     (*db)->table_count = 0;
     (*db)->tables_available = 0;
     (*db)->tables = NULL;
 
-    status s;
     s.code = OK;
     return s;
 }
@@ -48,27 +59,42 @@ status sync_db(db* db)
 status create_table(db* db, const char* name, size_t num_columns, table** table)
 {
     // TODO(luisperez): Need to check to see if the table already exists.
+    // Note: A table would already be in our variable pool, so this function
+    // won't be called with a duplicate table. We ignore this case for
+    // performance reasons as linearly searching over the tables seems
+    // inefficient.
+
+    // Store results.
+    status s;
 
     // Need to allocate space for the table.
     if (*table == NULL) {
         // We have no space.
         if (db->tables_available <= 0) {
+            log_info("No space for table %s in db:%s available! Creating more space.\n", name, db->name);
             size_t max_table_count = 2 * db->table_count + 1;
             db->tables_available = max_table_count - db->table_count;
             db->tables = resize(db->tables, sizeof(table) * db->table_count,
                 sizeof(table) * max_table_count);
+            if (!db->tables) {
+                log_err("Failure creating space for table %s in db %s. %s: error at line %d\n",
+                    name, db->name, __func__, __LINE__);
+                s.code = ERROR;
+                return s;
+            }
         }
         // Assign the table to the next available space in the database.
-        *table = &db->tables[db->table_count++];
+        *table = (db->tables[db->table_count++]);
     }
 
     // Populate table.
-    (*table)->name = name;
+    (*table)->name = copystr(name);
     (*table)->col_count = 0;
     (*table)->col = malloc(sizeof(column) * num_columns);
     (*table)->length = 0;
 
-    return global;
+    s.code = OK;
+    return s;
 }
 
 status drop_table(db* db, table* table)
@@ -81,13 +107,15 @@ status drop_table(db* db, table* table)
 status create_column(table* table, const char* name, column** col)
 {
     // TODO(luisperez): Need to check if the column already exists.
+    // Again, no need to do this because we check in var_pool before getting here.
+    // Removing the check for the sake of performance.
 
     // Need to allocate space for the column.
     if (*col == NULL) {
         // Assign the column to the next available space in the database.
-        *col = &table->col[table->col_count++];
+        *col = (table->col[table->col_count++]);
     }
-    (*col)->name = name;
+    (*col)->name = copystr(name);
     return global;
 }
 

@@ -3,6 +3,9 @@
 // As a general note, everything is implemented iteratively to avoid function call
 // overhead whenever possible. If needed, we use tail recursion.
 
+#include <string.h>
+
+#include "include/utils.h"
 #include "include/hash_map.h"
 
 // The has function used by this particular implementation.
@@ -31,7 +34,8 @@ cont_node* add_element(cont_node* head, char* key, void* value)
     else {
         new_head = head;
     }
-    new_head->link[new_head->count].key = key;
+
+    new_head->link[new_head->count].key = copystr(key);
     new_head->link[new_head->count++].value = value;
     return new_head;
 }
@@ -46,7 +50,7 @@ kv_pair* find_element(cont_node* head, char* key)
 
     // Search this link.
     for (size_t i = 0; i < head->count; i++) {
-        if (head->link[i].key == key) {
+        if (strcmp(head->link[i].key, key) == 0) {
             return &head->link[i];
         }
     }

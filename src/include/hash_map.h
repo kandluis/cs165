@@ -15,6 +15,8 @@
 #define LINK_SIZE 1024  // Size of a continuous link.
 #define BUCKETS 1024  // Size of the hashmap.
 
+#define MAX_STRING_LENGTH 100 // The longest allowed string.
+
 /**
 * A kv_pair is a (key,value) pair.
 * The key is  a string and the value is a generic pointer to the data associated

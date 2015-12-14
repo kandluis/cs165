@@ -57,4 +57,10 @@ void* resize(void* data, size_t osize, size_t nsize) {
     return ndata;
 }
 
+// Copies a string. Returns pointer to new string.
+char* copystr(const char* src) {
+    char* tmp = malloc(sizeof(char) * (strlen(src) + 1));
+    return strcpy(tmp, src);
+}
+
 
