@@ -1,4 +1,4 @@
--- Needs test8.dsl to have been executed first.
+-- Needs test08.dsl to have been executed first.
 -- Correctness test: Do inserts in tbl2. 
 -- 
 -- Table tbl2 has two secondary indexes and one clustered index, so, all should be maintained when we insert new data.
