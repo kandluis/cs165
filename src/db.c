@@ -13,7 +13,7 @@ status create_db(const char* db_name, db** db) {
 
     if (*db == NULL) {
         int attempts = 0;
-        while (!(*db = malloc(sizeof(db))) && attempts < MAX_ATTEMPTS) {
+        while (!(*db = malloc(sizeof(struct db))) && attempts < MAX_ATTEMPTS) {
           log_info("Database %s creation failed. Attempt %i.\n", db_name, attempts);
           attempts++;
         }
@@ -90,7 +90,7 @@ status create_table(db* db, const char* name, size_t num_columns, table** table)
     // Populate table.
     (*table)->name = copystr(name);
     (*table)->col_count = 0;
-    (*table)->col = malloc(sizeof(column) * num_columns);
+    (*table)->col = malloc(sizeof(struct column) * num_columns);
     (*table)->length = 0;
 
     s.code = OK;
