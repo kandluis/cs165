@@ -74,8 +74,8 @@ status create_table(db* db, const char* name, size_t num_columns, table** table)
             log_info("No space for table %s in db:%s available! Creating more space.\n", name, db->name);
             size_t max_table_count = 2 * db->table_count + 1;
             db->tables_available = max_table_count - db->table_count;
-            db->tables = resize(db->tables, sizeof(table) * db->table_count,
-                sizeof(table) * max_table_count);
+            db->tables = resize(db->tables, sizeof(struct table) * db->table_count,
+                sizeof(struct table) * max_table_count);
             if (!db->tables) {
                 log_err("Failure creating space for table %s in db %s. %s: error at line %d\n",
                     name, db->name, __func__, __LINE__);
