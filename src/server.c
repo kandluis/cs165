@@ -102,6 +102,7 @@ char* execute_db_operator(db_operator* query) {
         column* res = malloc(sizeof(struct column));
         res->data = r->payload;
         res->size = r->num_tuples;
+        res->count = r->num_tuples;
 
         // Add it to the var_map so we can access it later!
         set_var(query->var_name, res);
@@ -125,14 +126,16 @@ char* execute_db_operator(db_operator* query) {
 
         // We allocate space for the result based on upper bound estimate.
         // TODO(luisperez): Dynamically resize to avoid buffer overflow problems!
-        ret = malloc(sizeof(char) * ((10 * ncols) + 1) * rows);
+        char* res = malloc(sizeof(char) * ((10 * ncols) + 1) * rows);
+        res[0] = '\0';
+        ret = res; // Keep track of the start.
         for(size_t row = 0; row < rows; row++) {
             for (int col = 0; col < ncols - 1; col++) {
                 // Generate the string to hold a single digit
-                ret += sprintf(ret, "%d,", query->columns[col]->data[row]);
+                res += sprintf(res, "%d,", query->columns[col]->data[row]);
             }
             // For the last digit, don't add comma instead add a newline
-            ret +=  sprintf(ret, "%d\n", query->columns[ncols - 1]->data[row]);
+            res +=  sprintf(res, "%d\n", query->columns[ncols - 1]->data[row]);
         }
 
         // NEED TO FREE COLS AND POS1

@@ -266,6 +266,12 @@ int check(comparator* f, int value){
             else if (cur->type == EQUAL) {
                 success = success && (value == cur->p_val);
             }
+            else if (cur->type == (EQUAL | LESS_THAN)) {
+                success = success && (value <= cur->p_val);
+            }
+            else if (cur->type == (EQUAL | GREATER_THAN)) {
+                success = success && (value => cur->p_val);
+            }
             else {
                 log_err("Unsupported comparator type!");
                 return 0;
@@ -280,6 +286,12 @@ int check(comparator* f, int value){
             }
             else if (cur->type == EQUAL) {
                 success = success || (value == cur->p_val);
+            }
+            else if (cur->type == (EQUAL | LESS_THAN)) {
+                success = success || (value <= cur->p_val);
+            }
+            else if (cur->type == (EQUAL | GREATER_THAN)) {
+                success = success || (value => cur->p_val);
             }
             else {
                 log_err("Unsupported comparator type!");

@@ -64,6 +64,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
     char eq_sign[2] = "=";
     // char end_line[2] = "\n";
 
+    // RESET THE OPERATOR
+    op->type = NOTAVAILABLE;
+
     if (d->g == CREATE_DB) {
         // Create a working copy, +1 for '\0'
         char* str_cpy = malloc(strlen(str) + 1);
@@ -353,7 +356,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             }
             // We overload these operator fields.
             op->pos1 = posn_vec->data;
-            op->value1 = (int*) &(posn_vec->size);
+            op->value1 = (int*) &(posn_vec->count);
         }
         else {
             op->pos1 = NULL;
@@ -410,7 +413,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             comparator* tmp = malloc(sizeof(comparator));
             tmp->p_val = low;
             tmp->col = col1;
-            tmp->type = GREATER_THAN;
+            tmp->type = LESS_THAN | EQUAL;
             tmp->next_comparator = c;
             tmp->mode = NONE;
 
@@ -465,7 +468,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             return ret;
         }
         // This gives use <posn_vec>
-        char* posn_name = strtok(args, comma);
+        char* posn_name = strtok(NULL, comma);
         column* posn_vec = get_var(posn_name);
         if (!posn_vec) {
             log_err("Variable %s not defined. %s: error at line %d\n",
@@ -492,6 +495,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* narray = malloc(sizeof(struct column));
         narray->data = r->payload;
         narray->size = r->num_tuples;
+        narray->count = r->num_tuples;
         set_var(op->var_name, narray);
 
         free(str_cpy);
@@ -526,14 +530,14 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         int* res = malloc(sizeof(int));
         *res = vec_val->data[0];
         if (strcmp(fun_str, "min") == 0) {
-            for (size_t i = 0; i < vec_val->size; i++) {
+            for (size_t i = 0; i < vec_val->count; i++) {
                 if (vec_val->data[i] < *res) {
                     *res = vec_val->data[i];
                 }
             }
         }
         else if (strcmp(fun_str, "max") == 0) {
-            for (size_t i = 0; i < vec_val->size; i++) {
+            for (size_t i = 0; i < vec_val->count; i++) {
                 if (vec_val->data[i] > *res) {
                     *res = vec_val->data[i];
                 }
@@ -596,14 +600,14 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         int* res = malloc(sizeof(int));
         *res = vec_val->data[0];
         if (strcmp(fun_str, "min") == 0) {
-            for (size_t i = 0; i < vec_val->size; i++) {
+            for (size_t i = 0; i < vec_val->count; i++) {
                 if (vec_val->data[i] < *res) {
                     *res = i;
                 }
             }
         }
         else if (strcmp(fun_str, "max") == 0) {
-            for (size_t i = 0; i < vec_val->size; i++) {
+            for (size_t i = 0; i < vec_val->count; i++) {
                 if (vec_val->data[i] > *res) {
                     *res = i;
                 }
@@ -657,11 +661,11 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // Find the average
         long double sum = 0.;
-        for (size_t i = 0; i < vec_val->size; i++) {
+        for (size_t i = 0; i < vec_val->count; i++) {
             sum += vec_val->data[i];
         }
         double* res = malloc(sizeof(double));
-        *res = sum / ((long double) vec_val->size);
+        *res = sum / ((long double) vec_val->count);
 
         set_var(scl_str, res);
 
@@ -704,18 +708,19 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Vectors must be the same size.
-        if (vec_val1->size != vec_val2->size) {
+        if (vec_val1->count != vec_val2->count) {
             log_err("Vectors of different size: %d, %d",
-                vec_val1->size, vec_val2->size);
+                vec_val1->count, vec_val2->count);
             ret.code = ERROR;
             ret.error_message = "Incompatible operands";
             free(str_cpy);
             return ret;
         }
-        size_t n = vec_val1->size;
+        size_t n = vec_val1->count;
         // Allocate space for the result.
         column* res = malloc(sizeof(struct column));
         res->size = n;
+        res->count = n;
         res->data = malloc(sizeof(int) * res->size);
 
         // Determine operation to be performed!
@@ -772,6 +777,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         // Extract the first column!
         status ret;
         op->columns = malloc(sizeof(struct column*) * ncols);
+        op->pos1 = malloc(sizeof(int));
         *(op->pos1) = ncols;  // We override this to pass along the information  about ncols
         char* col_name = strtok(args, comma);
         column* col = get_var(col_name);

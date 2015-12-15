@@ -210,7 +210,8 @@ typedef enum OperatorType {
     DELETE,
     UPDATE,
     AGGREGATE,
-    PRINT
+    PRINT,
+    NOTAVAILABLE
 } OperatorType;
 
 /**
