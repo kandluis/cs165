@@ -13,7 +13,7 @@
 
 // Currently we have 4 DSL commands to parse.
 // TODO(USER): you will need to increase this to track the commands you support.
-#define NUM_DSL_COMMANDS (7)
+#define NUM_DSL_COMMANDS (11)
 
 // This helps group similar DSL commands together.
 // For example, some queries can be parsed together:
@@ -31,7 +31,13 @@ typedef enum DSLGroup {
     CREATE_COLUMN,
     RELATIONAL_INSERT,
     SELECT_COLUMN,
-    SELECT_POS
+    SELECT_POS,
+    FETCH,
+    EXTREME,
+    EXTREME_INDEX,
+    AVERAGE,
+    VECTOR_OPERATION,
+    TUPLE
     // TODO(USER): Add more here...
 } DSLGroup;
 
@@ -54,5 +60,6 @@ extern const char* create_col_command_unsorted;
 extern const char* relational_insert_command;
 extern const char*  select_column_command;
 extern const char* select_pos_command;
+extern const char* fetch_commad;
 
 #endif // DSL_H__

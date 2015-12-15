@@ -38,7 +38,6 @@ typedef enum DataType {
 } DataType;
 **/
 
-
 /**
  * IndexType
  * Flag to identify index type. Defines an enum for the different possible column indices.
@@ -74,8 +73,8 @@ typedef struct column_index {
  * - data, this is the raw data for the column. Operations on the data should
  *       be persistent.
  * - index, this is an [opt] index built on top of the column's data.
- * - data_count, this stores the number of elements currently stored in data
- * - data_size, The current size of the data array
+ * - count, this stores the number of elements currently stored in data
+ * - size, The current size of the data array
  *
  * NOTE: We do not track the column length in the column struct since all
  * columns in a table should share the same length. Instead, this is
@@ -84,8 +83,8 @@ typedef struct column_index {
 typedef struct column {
     const char* name;
     int* data;
-    size_t data_size;
-    size_t data_count;
+    size_t size;
+    size_t count;
     column_index* index;
 } column;
 
@@ -196,7 +195,7 @@ typedef struct result {
 } result;
 
 typedef enum Aggr {
-    MIN,
+    MIN = 1,
     MAX,
     SUM,
     AVG,
@@ -204,13 +203,14 @@ typedef enum Aggr {
 } Aggr;
 
 typedef enum OperatorType {
-    SELECT,
+    SELECT = 1,
     PROJECT,
     HASH_JOIN,
     INSERT,
     DELETE,
     UPDATE,
     AGGREGATE,
+    TUPLE
 } OperatorType;
 
 /**

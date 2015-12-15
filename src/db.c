@@ -183,8 +183,8 @@ status create_column(table* table, const char* name, column** col)
 
 
     (*col)->name = copystr(name);
-    (*col)->data_size = 0;
-    (*col)->data_count = 0;
+    (*col)->size = 0;
+    (*col)->count = 0;
 
     // TODO (data, index)
     (*col)->data = NULL;
@@ -205,11 +205,11 @@ status insert(column* col, int data)
 {
     // Check the data size in case we need to resize
     status ret;
-    if (col->data_count >= col->data_size) {
+    if (col->count >= col->size) {
         log_info("No space for data in column %s. Creating more space.\n", col->name);
-        size_t newcount = 2 * col->data_count + 1;
+        size_t newcount = 2 * col->count + 1;
         size_t newsize = newcount * sizeof(int);
-        size_t oldsize = col->data_count * sizeof(int);
+        size_t oldsize = col->count * sizeof(int);
         if (oldsize == 0) {
             newsize = DEFAULT_ARRAY_SIZE;
             col->data = malloc(sizeof(int) * newsize);
@@ -227,11 +227,11 @@ status insert(column* col, int data)
         }
 
         // Update tables
-        col->data_size = newsize;
+        col->size = newsize;
     }
 
     // Set the value into the column
-    col->data[col->data_count++] = data;
+    col->data[col->count++] = data;
     ret.code = OK;
 
     return ret;
@@ -249,13 +249,120 @@ status update(column* col, int* pos, int new_val)
     (void) new_val;
     return global;
 }
+
+
+int check(comparator* f, int value){
+    comparator* cur = f;
+    int success = 1; // 1 is True
+    Junction mode = AND; // Start with True && ...
+    while (cur) {
+        if (mode == AND) {
+            if (cur->type == LESS_THAN) {
+                success = success && (value < cur->p_val);
+            }
+            else if (cur->type == GREATER_THAN) {
+                success = success && (value > cur->p_val);
+            }
+            else if (cur->type == EQUAL) {
+                success = success && (value == cur->p_val);
+            }
+            else {
+                log_err("Unsupported comparator type!");
+                return 0;
+            }
+        }
+        else if (mode == OR) {
+            if (cur->type == LESS_THAN) {
+                success = success || (value < cur->p_val);
+            }
+            else if (cur->type == GREATER_THAN) {
+                success = success || (value > cur->p_val);
+            }
+            else if (cur->type == EQUAL) {
+                success = success || (value == cur->p_val);
+            }
+            else {
+                log_err("Unsupported comparator type!");
+                return 0;
+            }
+        }
+        // We don't use j == NONE because we assume next_compartor is NULL.
+        mode = cur->mode;
+        cur = cur->next_comparator;
+    }
+    return success;
+}
+
+// Fetches the values specified by pos from col and stores in r. Allocates
+// space for r if not already existent.
+status fetch(column* col, column* pos,  result** r){
+    status ret;
+    if (!(*r)){
+        *r = malloc(sizeof(struct result));
+        if (!(*r)) {
+            log_err("Low on memory! Could not allocate more space.")
+            ret.code = ERROR;
+            ret.error_message = "Low on memory";
+            return ret;
+        }
+    }
+
+    // Allocate space for result
+    (*r)->payload = malloc(pos->size * sizeof(int));
+    (*r)->num_tuples = pos->size;
+
+    // Copy out to the results
+    for (size_t i = 0; i < pos->size; i++) {
+        (*r)->payload[i] = col->data[pos->data[i]];
+    }
+
+    ret.code = OK;
+    return ret;
+}
+
 status col_scan(comparator* f, column* col, result** r)
 {
-    (void) f;
-    (void) col;
-    (void) r;
-    return global;
+    // The positions we need to scan are stored in *r->payload.
+    // We assume r has been pre-allocated.
+    status ret;
+    if (!(*r)) {
+        ret.code = ERROR;
+        ret.error_message = "Result not-allocated for col_scan.";
+        return ret;
+    }
+
+    int* pos = (*r)->payload;
+    int size = (*r)->num_tuples;
+    size_t res_pos = 0;
+
+    // We override with a new array because this data will be saved too!
+    (*r)->payload = calloc(size, sizeof(int));
+
+    // This is a full column scan.
+    if (!pos){
+        for(size_t i = 0; i < col->count; i++) {
+            if (check(f, col->data[i])) {
+                (*r)->payload[res_pos++] = i;
+            }
+        }
+        // Now we have a new result stored in r.
+        (*r)->num_tuples = res_pos;
+    }
+
+    // We use the pos indicated in the res.
+    else {
+        for(size_t ii = 0; ii < (*r)->num_tuples; ii++) {
+            if (check(f, col->data[pos[ii]])) {
+                (*r)->payload[res_pos++] = pos[ii];
+            }
+        (*r)->num_tuples = res_pos;
+        }
+    }
+
+    ret.code = OK;
+    return ret;
 }
+
 status index_scan(comparator* f, column* col, result** r)
 {
     (void) f;
@@ -264,6 +371,8 @@ status index_scan(comparator* f, column* col, result** r)
     return global;
 }
 
+
+// TODO(luisperez): Figure out what to do with these!
 status query_prepare(const char* query, db_operator** op)
 {
     (void) query;

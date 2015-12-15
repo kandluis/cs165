@@ -24,6 +24,7 @@
 
 #include "common.h"
 #include "cs165_api.h"
+#include "include/var_store.h"
 #include "message.h"
 #include "parser.h"
 #include "utils.h"
@@ -85,7 +86,52 @@ char* execute_db_operator(db_operator* query) {
         free(query->tables);
         free(query->value1);
     }
+    else if (query->type == SELECT) {
+        result* r = malloc(sizeof(struct result));
+        r->payload = query->pos1;
+        r->num_tuples = (query->value1) ? *(query->value1) : (int) query->columns[0]->count;
 
+        status s = col_scan(query->c, query->columns[0], &r);
+        if (s.code != OK) {
+            log_err("Column scan failed %s. %s: error in line %d\n",
+                s.error_message, __func__, __LINE__);
+            ret = s.error_message;
+        }
+
+        // The results payload is NEW! Now we can store it as an Array.
+        column* res = malloc(sizeof(struct column));
+        res->data = r->payload;
+        res->size = r->num_tuples;
+
+        // Add it to the var_map so we can access it later!
+        set_var(query->var_name, res);
+
+        // Free everything we've malloced.
+        free(query->columns);
+        comparator* cur = query->c;
+        comparator* tmp;
+        while (cur) {
+            tmp = cur;
+            cur = cur->next_comparator;
+            free(tmp);
+        }
+        free(r);
+    }
+    else if (query->type == TUPLE) {
+        // Need to construct a string with the result
+        size_t rows = query->columns[0]->count;
+        int ncols = *query->pos1
+        for(size_t row = 0; row < rows; row++) {
+            // Generate the string for single row from above.
+
+        }
+
+        int sprintf(char *str, const char *format, ...);
+
+        // NEED TO FREE COLS AND POS1
+        free(query->columns);
+        free(query->pos1);
+    }
     free(query);
     return ret;
 }

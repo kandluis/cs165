@@ -15,13 +15,31 @@ const char* create_col_command_unsorted = "^create\\(col\\,\\\"[a-zA-Z0-9_\\.]+\
 
 // Matches: relational_insert(<tbl_var>,[INT1],[INT2],...);
 // const char* relational_insert_command = "^relational_insert\\([a-zA-Z0-9_\\.]+\\,([0-9]+\\,)+[0-9]+\\)";
-const char* relational_insert_command = "^relational_insert*";
+const char* relational_insert_command = "^relational_insert(*)";
 
 // Matches: select from column
 const char* select_column_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,([0-9]+|null)\\,([0-9]+|null)\\)";
 
 // Matches: select from positions in column
 const char* select_pos_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\,([0-9]+|null)\\,([0-9]+|null)\\)";
+
+// Matches: fetch for fetching values from a column
+const char* fetch_commad = "^[a-zA-Z0-9_\\.]+\\=fetch\\([a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\)";
+
+// Matches: min/amx aggregate
+const char* extreme_value_command = "^[a-zA-Z0-9_\\.]+\\=(min|max)\\([a-zA-Z0-9_\\.]+\\)";
+
+// Matches: min/max index aggregate
+const char* extreme_index_command = "^[a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\=(min|max)\\((null|[a-zA-Z0-9_\\.]+)\\,[a-zA-Z0-9_\\.]+\\)";
+
+// MAtches: average
+const char* average_command = "^[a-zA-Z0-9_\\.]+\\=avg\\([a-zA-Z0-9_\\.]+\\)";
+
+// Matches: vector operation to either add or subtract
+const char* vect_operation_command = "^[a-zA-Z0-9_\\.]+\\=(add|sub)\\([a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\)";
+
+// Matches: tuple operation for printing
+const char* tuple_command = "^tuple(*)";
 
 // TODO(USER): You will need to update the commands here for every single command you add.
 dsl** dsl_commands_init(void)
@@ -53,6 +71,24 @@ dsl** dsl_commands_init(void)
 
     commands[6]->c = select_pos_command;
     commands[6]->g = SELECT_POS;
+
+    commands[7]->c = fetch_commad;
+    commands[7]->g = FETCH;
+
+    commands[8]->c = extreme_value_command;
+    commands[8]->g = EXTREME;
+
+    commands[9]->c = extreme_index_command;
+    commands[9]->g = EXTREME_INDEX;
+
+    commands[10]->c = average_command;
+    commands[10]->g = AVERAGE;
+
+    commands[11]->c = vect_operation_command;
+    commands[11]->g = VECTOR_OPERATION;
+
+    commands[12]->c = tuple_command;
+    commands[12]->g = TUPLE;
 
     return commands;
 }
