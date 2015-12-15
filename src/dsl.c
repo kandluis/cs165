@@ -13,6 +13,15 @@ const char* create_col_command_sorted = "^create\\(col\\,\\\"[a-zA-Z0-9_\\.]+\\\
 // Matches: create(col, <col_name>, <tbl_var>, unsorted);
 const char* create_col_command_unsorted = "^create\\(col\\,\\\"[a-zA-Z0-9_\\.]+\\\"\\,[a-zA-Z0-9_\\.]+\\,unsorted)";
 
+// Matches: relational_insert(<tbl_var>,[INT1],[INT2],...);
+// const char* relational_insert_command = "^relational_insert\\([a-zA-Z0-9_\\.]+\\,([0-9]+\\,)+[0-9]+\\)";
+const char* relational_insert_command = "^relational_insert*";
+
+// Matches: select from column
+const char* select_column_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,([0-9]+|null)\\,([0-9]+|null)\\)";
+
+// Matches: select from positions in column
+const char* select_pos_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\,([0-9]+|null)\\,([0-9]+|null)\\)";
 
 // TODO(USER): You will need to update the commands here for every single command you add.
 dsl** dsl_commands_init(void)
@@ -35,6 +44,15 @@ dsl** dsl_commands_init(void)
 
     commands[3]->c = create_col_command_unsorted;
     commands[3]->g = CREATE_COLUMN;
+
+    commands[4]->c = relational_insert_command;
+    commands[4]->g = RELATIONAL_INSERT;
+
+    commands[5]->c = select_column_command;
+    commands[5]->g = SELECT_COLUMN;
+
+    commands[6]->c = select_pos_command;
+    commands[6]->g = SELECT_POS;
 
     return commands;
 }

@@ -35,7 +35,8 @@ void log_info(const char *format, ...);
 
 // Takes a pointer to data and resizes it to a new contiguous section of memory.
 // osize is the old size (in bytes) of the data to be copied and nsize is the size
-// of the new space.
+// of the new space. Returns a pointer to the new section of memory.
+// data must not be NULL.
 void* resize(void* data, size_t osize, size_t nsize);
 
 // Takes a pointer to a string and creates a copy. The caller is responsible for

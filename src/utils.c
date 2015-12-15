@@ -53,7 +53,7 @@ void log_info(const char *format, ...) {
 void* resize(void* data, size_t osize, size_t nsize) {
     assert(osize <= nsize);
     void* ndata = malloc(sizeof(char) * nsize);
-    memcpy(data, ndata, osize);
+    memcpy(ndata, data, osize);
     return ndata;
 }
 

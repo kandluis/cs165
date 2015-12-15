@@ -49,6 +49,7 @@ status parse_command_string(char* str, dsl** commands, db_operator* op)
     // Nothing was found!
     status s;
     s.code = ERROR;
+    s.error_message = "No matching commands found.\n";
     return s;
 }
 
@@ -59,8 +60,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
     char close_paren[2] = ")";
     char comma[2] = ",";
     char quotes[2] = "\"";
+    char eq_sign[2] = "=";
     // char end_line[2] = "\n";
-    // char eq_sign[2] = "=";
 
     if (d->g == CREATE_DB) {
         // Create a working copy, +1 for '\0'
@@ -222,7 +223,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // Grab the table, which should already exist.
         status ret;
-        table* tbl1 = get_var(full_name);
+        table* tbl1 = get_var(tbl_name);
         if (!tbl1) {
             log_err("No table found. %s: error at line: %d\n", __func__, __LINE__);
             ret.code = ERROR;
@@ -241,7 +242,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                 }
                 else {
                     ret.code = OK;
-                    set_var(full_name, tbl1);
+                    set_var(full_name, col1);
                 }
             }
             else {
@@ -262,10 +263,185 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         ret.code = OK;
         return ret;
+    } else if (d->g == RELATIONAL_INSERT) {
+        // Create a working copy, +1 for '\0'
+        char* str_cpy = malloc(strlen(str) + 1);
+        strncpy(str_cpy, str, strlen(str) + 1);
+
+        // This gives us everything inside the (<tbl_name>, [INT1], [INT2], ...)
+        strtok(str_cpy, open_paren);
+        char* args = strtok(NULL, close_paren);
+
+        // This gives us <tlb_name>
+        char* tbl_name = strtok(args, comma);
+        status ret;
+
+        // Get the pointer to the table.
+        table* tbl1 = get_var(tbl_name);
+        if (!tbl1) {
+            log_err("Table %s does not exists. Cannot insert!", tbl_name);
+            ret.code = ERROR;
+            ret.error_message = "Table does not exists!";
+        }
+        else {
+            // Now we need to create a query plan?
+            op->type = INSERT;
+
+            // Add table
+            op->tables = malloc(sizeof(struct table*));
+            op->tables[0] = tbl1;
+
+            // Add column pointers
+            op->columns = tbl1->col;
+
+            // Add values extracted from input by users
+            char* count_str;
+            int count;
+            op->value1 = malloc(sizeof(int) * tbl1->col_count);
+            for (size_t i = 0; i < tbl1->col_count; i++) {
+                count_str = strtok(NULL, comma);
+                if (count_str) {
+                    count = atoi(count_str);
+                     op->value1[i] = count;
+                } else {
+                    log_err("Could not parse insert value into table %s\n", tbl_name);
+                }
+            }
+
+            // All others are set to null
+            op->var_name = NULL;
+            op->pos1 = NULL;
+            op->pos2 = NULL;
+            op->value2 = NULL;
+            op->c = NULL;
+            // NOTE: agg is not set?
+        }
+
+        // Return the status
+        free(str_cpy);
+
+        ret.code = OK;
+        return ret;
+
+
+    } else if (d->g == SELECT_POS || d->g == SELECT_COLUMN) {
+        // Create a working copy, +1 for '\0'
+        char* str_cpy = malloc(strlen(str) + 1);
+        strncpy(str_cpy, str, strlen(str) + 1);
+
+        // We split on the equals sign <vec_pos>=select([<posn_vec>, ]<col_var>,<low>,<high>)
+        char* vec_pos = strtok(str_cpy, eq_sign);
+        op->var_name = copystr(vec_pos);
+
+        // Now we extract everything inside ([<posn_vec>, ]<col_var>,<low>,<high>)
+        strtok(NULL, open_paren);
+        char* args = strtok(NULL, close_paren);
+
+        status ret;
+        if (d->g == SELECT_POS) {
+            // This gives use <posn_vec>
+            char* posn_name = strtok(args, comma);
+            int* posn_vec = get_var(posn_name);
+            if (!posn_vec) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    posn_name, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                return ret;
+            }
+            op->pos1 = posn_vec;
+        }
+        else {
+            op->pos1 = NULL;
+        }
+
+        // this gives us col_var
+        char* col_name = strtok((d->g == SELECT_COLUMN ) ?  args : NULL, comma);
+        column* col1 = get_var(col_name);
+        if (!col1) {
+            log_err("Column %s does not exists. Cannot select!", col_name);
+            ret.code = ERROR;
+            ret.error_message = "Column does not exist!";
+            free(str_cpy);
+            return ret;
+        }
+
+        // We now prepare the query operator
+        op->type = SELECT;
+        op->tables = NULL;
+
+        // TODO: FREE THIS!
+        op->columns = malloc(sizeof(struct column*));
+        if (!(op->columns)) {
+            log_err("Low memory. %s: error at line %d\n", __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Low memory\n";
+            free(str_cpy);
+            return ret;
+        }
+        op->columns[0] = col1;
+        op->pos2 = NULL;
+        op->value1 = NULL;
+        op->value2 = NULL;
+
+        // Note agg is not set
+
+        // We extract the low and the high
+        char* low_str = strtok(NULL, comma);
+        char* high_str = strtok(NULL, comma);
+        if (!low_str || !high_str) {
+            log_err("Low memory. %s: error at line %d\n", __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Low memory\n";
+            free(str_cpy);
+            free(op->columns);
+            return ret;
+        }
+
+        // Head of our comparator!
+        comparator* c = NULL;
+        // We have a query looking for values low <= x (x > low)
+        if (strcmp(low_str, "null") != 0) {
+            int low = atoi(low_str);
+            // TODO FREE THIS
+            comparator* tmp = malloc(sizeof(comparator));
+            tmp->p_val = low;
+            tmp->col = col1;
+            tmp->type = GREATER_THAN;
+            tmp->next_comparator = c;
+            tmp->mode = NONE;
+
+            // New head.
+            c = tmp;
+        }
+        if (strcmp(high_str, "null") != 0) {
+            int high = atoi(high_str);
+            // TODO FREE THIS
+            comparator* tmp = malloc(sizeof(comparator));
+            tmp->p_val = high;
+            tmp->col = col1;
+            tmp->type = LESS_THAN;
+            tmp->next_comparator = c;
+            tmp->mode = AND;
+
+            // New head.
+            c = tmp;
+        }
+
+        // Add it to the query!
+        op->c = c;
+
+        free(str_cpy);
+
+        ret.code = OK;
+        return ret;
+
     }
 
     // Should have been caught earlier...
     status fail;
     fail.code = ERROR;
+    fail.error_message = "No matching operation!\n";
     return fail;
 }

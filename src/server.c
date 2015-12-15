@@ -62,8 +62,32 @@ db_operator* parse_command(message* recv_message, message* send_message) {
  * a serialization into a string message).
  **/
 char* execute_db_operator(db_operator* query) {
+    if (!query){
+        return "Failed!";
+    }
+
+    // Let's see what the query wants us to do!
+    char* ret = "Success!";
+    if (query->type == INSERT) {
+        // Extract the table.
+        table* tbl = query->tables[0];
+
+        // Iterate over the columns and insert the values
+        for(size_t i = 0; i < tbl->col_count; i++) {
+            status s = insert(query->columns[i], query->value1[i]);
+            if (s.code == ERROR) {
+                ret = s.error_message;
+                break;
+            }
+        }
+
+        // We still need to free the stuff allocated by parse.
+        free(query->tables);
+        free(query->value1);
+    }
+
     free(query);
-    return "165";
+    return ret;
 }
 
 /**

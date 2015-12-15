@@ -74,6 +74,8 @@ typedef struct column_index {
  * - data, this is the raw data for the column. Operations on the data should
  *       be persistent.
  * - index, this is an [opt] index built on top of the column's data.
+ * - data_count, this stores the number of elements currently stored in data
+ * - data_size, The current size of the data array
  *
  * NOTE: We do not track the column length in the column struct since all
  * columns in a table should share the same length. Instead, this is
@@ -82,6 +84,8 @@ typedef struct column_index {
 typedef struct column {
     const char* name;
     int* data;
+    size_t data_size;
+    size_t data_count;
     column_index* index;
 } column;
 
@@ -98,12 +102,14 @@ typedef struct column {
  * - col_count, the number of columns in the table
  * - col, this is the pointer to an array of columns contained in the table.
  * - length, the size of the columns in the table.
+ * - table_size, the maximum number of columns the table can contain.
  **/
 typedef struct table {
     const char* name;
     size_t col_count;
     column** col;
     size_t length;
+    size_t table_size;
 } table;
 
 /**
@@ -237,6 +243,9 @@ typedef enum OperatorType {
  * op1.comparator = f;
  **/
 typedef struct db_operator {
+    // Used for operators of the form var_name=[OPERATION]
+    char* var_name;
+
     // Flag to choose operator
     OperatorType type;
 
