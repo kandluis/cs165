@@ -210,7 +210,7 @@ typedef enum OperatorType {
     DELETE,
     UPDATE,
     AGGREGATE,
-    TUPLE
+    PRINT
 } OperatorType;
 
 /**
@@ -399,6 +399,7 @@ status create_index(column* col, IndexType type);
 status insert(column *col, int data);
 status delete(column *col, int *pos);
 status update(column *col, int *pos, int new_val);
+status fetch(column *col, column *pos, result **r);
 status col_scan(comparator *f, column *col, result **r);
 status index_scan(comparator *f, column *col, result **r);
 

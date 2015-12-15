@@ -478,7 +478,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // We now execute the operation (TODO -- is this valid?)
         result* r = NULL;
-        status s = fetch(col1, posn_vecs, &r);
+        status s = fetch(col1, posn_vec, &r);
         if (s.code != OK) {
             log_err("Fetch operation failed %s. %s: error in line %d",
                 s.error_message, __func__, __LINE__);
@@ -489,10 +489,10 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Store into the variable pool
-        column narray = malloc(sizeof(struct column));
+        column* narray = malloc(sizeof(struct column));
         narray->data = r->payload;
         narray->size = r->num_tuples;
-        set_var(query->var_name, narray);
+        set_var(op->var_name, narray);
 
         free(str_cpy);
         ret.code = OK;
@@ -515,7 +515,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* vec_val = get_var(vec_val_str);
         if (!vec_val) {
             log_err("Variable %s not defined. %s: error at line %d\n",
-                posn_name, __func__, __LINE__);
+                vec_val_str, __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Undefined variable";
             free(str_cpy);
@@ -540,7 +540,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             }
         }
         else {
-            ret.error_message = "Unsupported operation.\n"
+            ret.error_message = "Unsupported operation.\n";
             ret.code = ERROR;
             log_err(ret.error_message);
             return ret;
@@ -576,7 +576,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* vec_val = get_var(vec_val_str);
         if (!vec_val) {
             log_err("Variable %s not defined. %s: error at line %d\n",
-                posn_name, __func__, __LINE__);
+                vec_val_str, __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Undefined variable";
             free(str_cpy);
@@ -585,7 +585,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* vec_pos = get_var(vec_pos_str);
         if (!vec_pos && strcmp(vec_pos_str, "null") != 0) {
         log_err("Variable %s not defined. %s: error at line %d\n",
-                posn_name, __func__, __LINE__);
+                vec_pos_str, __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Undefined variable";
             free(str_cpy);
@@ -610,7 +610,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             }
         }
         else {
-            ret.error_message = "Unsupported operation.\n"
+            ret.error_message = "Unsupported operation.\n";
             ret.code = ERROR;
             log_err(ret.error_message);
             return ret;
@@ -631,7 +631,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         return ret;
     }
 
-    else if (d->AVERAGE) {
+    else if (d->g == AVERAGE) {
         // Create a working copy, +1 for '\0'
         char* str_cpy = malloc(strlen(str) + 1);
         strncpy(str_cpy, str, strlen(str) + 1);
@@ -648,7 +648,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* vec_val = get_var(vec_val_str);
         if (!vec_val) {
             log_err("Variable %s not defined. %s: error at line %d\n",
-                posn_name, __func__, __LINE__);
+                vec_val_str, __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Undefined variable";
             free(str_cpy);
@@ -686,7 +686,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* vec_val1 = get_var(vec_val1_str);
         if (!vec_val1) {
             log_err("Variable %s not defined. %s: error at line %d\n",
-                posn_name, __func__, __LINE__);
+                vec_val1_str, __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Undefined variable";
             free(str_cpy);
@@ -696,7 +696,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* vec_val2 = get_var(vec_val2_str);
         if (!vec_val2) {
             log_err("Variable %s not defined. %s: error at line %d\n",
-                posn_name, __func__, __LINE__);
+                vec_val2_str, __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Undefined variable";
             free(str_cpy);
@@ -712,7 +712,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             free(str_cpy);
             return ret;
         }
-        int n = vec_val1->size;
+        size_t n = vec_val1->size;
         // Allocate space for the result.
         column* res = malloc(sizeof(struct column));
         res->size = n;
@@ -722,16 +722,16 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         // TODO (What would be really cool would be to do all of this lazily!)
         if (strcmp(fun_str, "sub") == 0) {
             for (size_t i = 0; i < n; i++) {
-                res->data[i] = vec_val1[i] - vec_val2[i];
+                res->data[i] = vec_val1->data[i] - vec_val2->data[i];
             }
         }
         else if (strcmp(fun_str, "add") == 0) {
             for (size_t i = 0; i < n; i++) {
-                res->data[i] = vec_val1[i] + vec_val2[i];
+                res->data[i] = vec_val1->data[i] + vec_val2->data[i];
             }
         }
         else {
-            ret.error_message = "Unsupported operation.\n"
+            ret.error_message = "Unsupported operation.\n";
             ret.code = ERROR;
             log_err(ret.error_message);
             return ret;
@@ -752,7 +752,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         char* args = strtok(NULL, close_paren);
 
         // Set defaults to query plan.
-        op->type = TUPLE;
+        op->type = PRINT;
         op->tables = NULL;
         op->pos2 = NULL;
         op->value1 = NULL;
@@ -777,7 +777,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* col = get_var(col_name);
         if (!col){
             log_err("Variable %s not defined. %s: error at line %d\n",
-                posn_name, __func__, __LINE__);
+                col_name, __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Undefined variable";
             free(str_cpy);
@@ -793,7 +793,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             col = get_var(col_name);
             if (!col) {
                 log_err("Variable %s not defined. %s: error at line %d\n",
-                    posn_name, __func__, __LINE__);
+                    col_name, __func__, __LINE__);
                 ret.code = ERROR;
                 ret.error_message = "Undefined variable";
                 free(str_cpy);

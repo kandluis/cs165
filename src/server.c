@@ -117,16 +117,23 @@ char* execute_db_operator(db_operator* query) {
         }
         free(r);
     }
-    else if (query->type == TUPLE) {
+    else if (query->type == PRINT) {
+
         // Need to construct a string with the result
         size_t rows = query->columns[0]->count;
-        int ncols = *query->pos1
+        int ncols = *query->pos1;
+
+        // We allocate space for the result based on upper bound estimate.
+        // TODO(luisperez): Dynamically resize to avoid buffer overflow problems!
+        ret = malloc(sizeof(char) * ((10 * ncols) + 1) * rows);
         for(size_t row = 0; row < rows; row++) {
-            // Generate the string for single row from above.
-
+            for (int col = 0; col < ncols - 1; col++) {
+                // Generate the string to hold a single digit
+                ret += sprintf(ret, "%d,", query->columns[col]->data[row]);
+            }
+            // For the last digit, don't add comma instead add a newline
+            ret +=  sprintf(ret, "%d\n", query->columns[ncols - 1]->data[row]);
         }
-
-        int sprintf(char *str, const char *format, ...);
 
         // NEED TO FREE COLS AND POS1
         free(query->columns);

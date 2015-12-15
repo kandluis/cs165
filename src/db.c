@@ -300,7 +300,7 @@ status fetch(column* col, column* pos,  result** r){
     if (!(*r)){
         *r = malloc(sizeof(struct result));
         if (!(*r)) {
-            log_err("Low on memory! Could not allocate more space.")
+            log_err("Low on memory! Could not allocate more space.");
             ret.code = ERROR;
             ret.error_message = "Low on memory";
             return ret;
