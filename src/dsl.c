@@ -15,7 +15,7 @@ const char* create_col_command_unsorted = "^create\\(col\\,\\\"[a-zA-Z0-9_\\.]+\
 
 // Matches: relational_insert(<tbl_var>,[INT1],[INT2],...);
 // const char* relational_insert_command = "^relational_insert\\([a-zA-Z0-9_\\.]+\\,([0-9]+\\,)+[0-9]+\\)";
-const char* relational_insert_command = "^relational_insert*";
+const char* relational_insert_command = "^relational_insert";
 
 // Matches: select from column
 const char* select_column_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,([0-9]+|null)\\,([0-9]+|null)\\)";
@@ -39,7 +39,10 @@ const char* average_command = "^[a-zA-Z0-9_\\.]+\\=avg\\([a-zA-Z0-9_\\.]+\\)";
 const char* vect_operation_command = "^[a-zA-Z0-9_\\.]+\\=(add|sub)\\([a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\)";
 
 // Matches: tuple operation for printing
-const char* tuple_command = "^tuple*";
+const char* tuple_command = "^tuple";
+
+// Matches: load("<filename");
+const char* load_command = "^load\\(\\\"[a-zA-Z0-9_\\.\\/]+\\\"\\)";
 
 // Matches shutdown
 const char* shutdown_command = "^shutdown";
@@ -95,6 +98,9 @@ dsl** dsl_commands_init(void)
 
     commands[13]->c = shutdown_command;
     commands[13]->g = SHUTDOWN;
+
+    commands[14]->c = load_command;
+    commands[14]->g = LOADCOMMAND;
 
     return commands;
 }

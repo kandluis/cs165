@@ -68,7 +68,7 @@ char* execute_db_operator(db_operator* query) {
     }
 
     // Let's see what the query wants us to do!
-    char* ret = "Success!";
+    char* ret = "";
     if (query->type == INSERT) {
         // Extract the table.
         table* tbl = query->tables[0];
@@ -122,7 +122,7 @@ char* execute_db_operator(db_operator* query) {
 
         // Need to construct a string with the result
         size_t rows = query->columns[0]->count;
-        int ncols = *query->pos1;
+        int64_t ncols = *query->pos1;
 
         // We allocate space for the result based on upper bound estimate.
         // TODO(luisperez): Dynamically resize to avoid buffer overflow problems!
@@ -130,12 +130,12 @@ char* execute_db_operator(db_operator* query) {
         res[0] = '\0';
         ret = res; // Keep track of the start.
         for(size_t row = 0; row < rows; row++) {
-            for (int col = 0; col < ncols - 1; col++) {
+            for (int64_t col = 0; col < ncols - 1; col++) {
                 // Generate the string to hold a single digit
-                res += sprintf(res, "%d,", query->columns[col]->data[row]);
+                res += sprintf(res, "%ld,", query->columns[col]->data[row]);
             }
             // For the last digit, don't add comma instead add a newline
-            res +=  sprintf(res, "%d\n", query->columns[ncols - 1]->data[row]);
+            res +=  sprintf(res, "%ld\n", query->columns[ncols - 1]->data[row]);
         }
 
         // NEED TO FREE COLS AND POS1
@@ -159,7 +159,11 @@ void handle_client(int client_socket) {
 
     // Create two messages, one from which to read and one from which to receive
     message send_message;
+    send_message.length = 0;
+    send_message.payload = NULL;
     message recv_message;
+    recv_message.length = 0;
+    recv_message.payload = NULL;
 
     // Continually receive messages from client and execute queries.
     // 1. Parse the command
@@ -184,12 +188,69 @@ void handle_client(int client_socket) {
             // 1. Parse command
             db_operator* query = parse_command(&recv_message, &send_message);
 
+            // We have to special case LOAD!
+            if (query->type == LOADFILE) {
+                // Read the first line of the file (foo.t1.a,foo.t1.b) and get columns
+                length = recv(client_socket, &recv_message, sizeof(message), 0);
+                if (length <= 0) {
+                    log_err("Client connection closed!\n");
+                    exit(1);
+                }
+
+                char buffer[recv_message.length];
+                length = recv(client_socket, buffer, recv_message.length, 0);
+                buffer[recv_message.length] = '\0';
+
+                // Read the rest of the input line by line until payload TERMINATES.
+                // First, let's count how many columns we have
+                int64_t ncol = 1;
+                int64_t i = 0;
+                while (buffer[i] != '\0') {
+                    if (buffer[i] == ',') {
+                        ncol++;
+                    }
+                    i++;
+                }
+
+                // Now we can parse each col.
+                column** cols = malloc(sizeof(struct column*) * ncol);
+                cols[0] = get_var(strtok(buffer, ","));
+                for (int64_t i = 1; i < ncol; i++) {
+                    cols[i] = get_var(strtok(NULL, ","));
+                }
+
+                // Now we read line by line and insert into the database
+                while(recv(client_socket, &recv_message, sizeof(message), 0) > 0) {
+                    recv(client_socket, buffer, recv_message.length, 0);
+                    buffer[recv_message.length] = '\0';
+
+                    // Break out of loop if we received the EOF message
+                    if (strcmp(buffer, TERMINATE_LOAD) == 0) {
+                        log_info("Received termination signal from client. Load completed.");
+                        break;
+                    }
+                    // Insert into respective columns
+                    char* str = NULL;
+                    for (int64_t i = 0; i < ncol; i++){
+                        str = strtok((i == 0) ? buffer : NULL, ",");
+                        if (!str) {
+                            log_err("Could not parse. Error in load.\n", buffer);
+                        }
+                        status s = insert(cols[i], atoi(str));
+                        if (s.code != OK) {
+                            log_err("Could not insert value %s into column during load.", str);
+                        }
+                    }
+                }
+                /// Stuff
+            }
+
             // 2. Handle request
             char* result = execute_db_operator(query);
             send_message.length = strlen(result);
 
             // 3. Send status of the received message (OK, UNKNOWN_QUERY, etc)
-            if (send(client_socket, &(send_message), sizeof(message), 0) == -1) {
+            if (send(client_socket, &(send_message), sizeof(struct message), 0) == -1) {
                 log_err("Failed to send message.");
                 exit(1);
             }

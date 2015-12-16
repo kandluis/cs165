@@ -8,6 +8,10 @@
 #include "include/var_store.h"
 
 
+// Global column to store pointers to databases we've created/loaded etc.
+column databases;
+
+
 // TODO(luisperez): Are we supposed to return an error if the "thing" we are
 // creating already exists?
 
@@ -23,13 +27,13 @@ status parse_command_string(char* str, dsl** commands, db_operator* op)
 
     // Create a regular expression to parse the string
     regex_t regex;
-    int ret;
+    int64_t ret;
 
     // Track the number of matches; a string must match all
-    int n_matches = 1;
+    int64_t n_matches = 1;
     regmatch_t m;
 
-    for (int i = 0; i < NUM_DSL_COMMANDS; ++i) {
+    for (int64_t i = 0; i < NUM_DSL_COMMANDS; ++i) {
         dsl* d = commands[i];
         if (regcomp(&regex, d->c, REG_EXTENDED) != 0) {
             log_err("Could not compile regex\n");
@@ -72,7 +76,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         char* str_cpy = malloc(strlen(str) + 1);
         strncpy(str_cpy, str, strlen(str) + 1);
 
-        // This gives us everything inside the (db, "<db_name>")
+        // This gives us everything inside the (db,"<db_name>")
         strtok(str_cpy, open_paren);
         char* args = strtok(NULL, close_paren);
 
@@ -103,6 +107,12 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             }
             else {
                 set_var(db_name, db1);
+                // Store in our global pointer
+                if (databases.count >= databases.size) {
+                    // need to resize the array
+                    databases.data = realloc(databases.data, (2 * databases.count + 1) * sizeof(struct db*));
+                }
+                databases.data[databases.count] = (int64_t) db1;
                 ret.code = OK;
             }
         }
@@ -146,7 +156,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // This gives us count
         char* count_str = strtok(NULL, comma);
-        int count = 0;
+        int64_t count = 0;
         if (count_str != NULL) {
             count = atoi(count_str);
         }
@@ -300,8 +310,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
             // Add values extracted from input by users
             char* count_str;
-            int count;
-            op->value1 = malloc(sizeof(int) * tbl1->col_count);
+            int64_t count;
+            op->value1 = malloc(sizeof(int64_t) * tbl1->col_count);
             for (size_t i = 0; i < tbl1->col_count; i++) {
                 count_str = strtok(NULL, comma);
                 if (count_str) {
@@ -356,7 +366,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             }
             // We overload these operator fields.
             op->pos1 = posn_vec->data;
-            op->value1 = (int*) &(posn_vec->count);
+            op->value1 = (int64_t*) &(posn_vec->count);
         }
         else {
             op->pos1 = NULL;
@@ -408,9 +418,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         comparator* c = NULL;
         // We have a query looking for values low <= x (x > low)
         if (strcmp(low_str, "null") != 0) {
-            int low = atoi(low_str);
+            int64_t low = atoi(low_str);
             // TODO FREE THIS
-            comparator* tmp = malloc(sizeof(comparator));
+            comparator* tmp = malloc(sizeof(struct comparator));
             tmp->p_val = low;
             tmp->col = col1;
             tmp->type = LESS_THAN | EQUAL;
@@ -421,9 +431,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             c = tmp;
         }
         if (strcmp(high_str, "null") != 0) {
-            int high = atoi(high_str);
+            int64_t high = atoi(high_str);
             // TODO FREE THIS
-            comparator* tmp = malloc(sizeof(comparator));
+            comparator* tmp = malloc(sizeof(struct comparator));
             tmp->p_val = high;
             tmp->col = col1;
             tmp->type = LESS_THAN;
@@ -527,7 +537,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Find the minimum or maximum
-        int* res = malloc(sizeof(int));
+        int64_t* res = malloc(sizeof(int64_t));
         *res = vec_val->data[0];
         if (strcmp(fun_str, "min") == 0) {
             for (size_t i = 0; i < vec_val->count; i++) {
@@ -597,7 +607,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Find the index of the minimum or maximum
-        int* res = malloc(sizeof(int));
+        int64_t* res = malloc(sizeof(int64_t));
         *res = vec_val->data[0];
         if (strcmp(fun_str, "min") == 0) {
             for (size_t i = 0; i < vec_val->count; i++) {
@@ -621,7 +631,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Store the value result
-        int* value = malloc(sizeof(int));
+        int64_t* value = malloc(sizeof(int64_t));
         *value = vec_val->data[*res];
         set_var(val_str, value);
 
@@ -721,7 +731,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* res = malloc(sizeof(struct column));
         res->size = n;
         res->count = n;
-        res->data = malloc(sizeof(int) * res->size);
+        res->data = malloc(sizeof(int64_t) * res->size);
 
         // Determine operation to be performed!
         // TODO (What would be really cool would be to do all of this lazily!)
@@ -765,8 +775,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         op->c = NULL;
 
         // Count how many columns we're printing.
-        int ncols = 1;
-        int i = 0;
+        int64_t ncols = 1;
+        int64_t i = 0;
         while (args[i] != '\0') {
             if (args[i] == ',') {
                 ncols++;
@@ -777,7 +787,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         // Extract the first column!
         status ret;
         op->columns = malloc(sizeof(struct column*) * ncols);
-        op->pos1 = malloc(sizeof(int));
+        op->pos1 = malloc(sizeof(int64_t));
         *(op->pos1) = ncols;  // We override this to pass along the information  about ncols
         char* col_name = strtok(args, comma);
         column* col = get_var(col_name);
@@ -794,7 +804,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         size_t col_count = col->count;
 
         // Grab the remaining columns!
-        for (int i = 1; i < ncols; i++) {
+        for (int64_t i = 1; i < ncols; i++) {
             col_name = strtok(NULL, comma);
             col = get_var(col_name);
             if (!col) {
@@ -820,6 +830,34 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         // Eveyrthing went well!
         ret.code = OK;
         return ret;
+    }
+    else if (d->g == LOADCOMMAND) {
+        // Need to stream data from the client to the server and insert it!
+        status ret;
+        op->type = LOADFILE;
+
+        ret.code = OK;
+        return ret;
+    }
+    else if (d->g == SHUTDOWN) {
+        status ret;
+        // Our metadata file needs to be overwritten
+        FILE* mfile = fopen("server.meta", "w");
+        for (size_t i = 0; i < databases.count; i++) {
+            db* db = (struct db*)(databases.data[i]);
+            fprintf(mfile, "%s,%zd\n", db->name, db->table_count);
+            status s = sync_db(db);
+            if (s.code != OK) {
+                log_err("Unable to store database %s", db->name);
+                fclose(mfile);
+                return s;
+            }
+        }
+        fclose(mfile);
+
+        ret.code = OK;
+        return ret;
+        // TODO: Need to free a lot of stuff?
     }
 
     // Should have been caught earlier...

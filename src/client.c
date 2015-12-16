@@ -13,6 +13,7 @@
  **/
 #include <stdlib.h>
 #include <unistd.h>
+#include <regex.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -23,8 +24,13 @@
 #include "common.h"
 #include "message.h"
 #include "utils.h"
+#include "dsl.h"
 
 #define DEFAULT_STDIN_BUFFER_SIZE 1024
+
+const char* load_command = "^load\\(\\\"[a-zA-Z0-9_\\.\\/]+\\\"\\)";
+const char* comment = "^--";
+
 
 /**
  * connect_client()
@@ -57,6 +63,44 @@ int connect_client() {
     return client_socket;
 }
 
+void send_to_server(int socket, message* msg) {
+    // Send the message_header, which tells server payload size
+    if (send(socket, msg, sizeof(message), 0) == -1) {
+        log_err("Failed to send message header.");
+        exit(1);
+    }
+    if (send(socket, msg->payload, msg->length, 0) == -1) {
+        log_err("Failed to send query payload.");
+        exit(1);
+    }
+}
+
+void process_load_command(char* cmd, int client_socket, message* send_message) {
+    // This gives use everything inside ("load.txt")
+    strtok(cmd, "(");
+    char* filename = strtok(NULL, ")");
+    filename += 1;
+    filename = strtok(filename, "\"");
+
+    // Open the file
+    FILE* fp = fopen(filename, "r");
+    char* read = NULL;
+    if (fp) {
+        while ((read = fgets(send_message->payload, DEFAULT_STDIN_BUFFER_SIZE, fp))) {
+            send_message->length = strlen(send_message->payload);
+            send_message->payload[send_message->length - 1] = '\0';
+            send_to_server(client_socket, send_message);
+        }
+        fclose(fp);
+    }
+
+    // Send a final message (EOF) that we've reached end of file!
+    // This trigger the server to respond!
+    send_message->length = strlen(TERMINATE_LOAD);
+    strcpy(send_message->payload, TERMINATE_LOAD);
+    send_to_server(client_socket, send_message);
+}
+
 int main(void)
 {
     int client_socket = connect_client();
@@ -75,13 +119,24 @@ int main(void)
     }
 
     char *output_str = NULL;
-    int len = 0;
 
     // Continuously loop and wait for input. At each iteration:
     // 1. output interactive marker
     // 2. read from stdin until eof.
     char read_buffer[DEFAULT_STDIN_BUFFER_SIZE];
     send_message.payload = read_buffer;
+    int len = 0;
+
+    // To check the message is a load_command. We need to stream a file in that case.
+    regex_t regex1, regex2;
+    int ret;
+    int n_matches = 1;
+    regmatch_t m;
+    if (regcomp(&regex1, load_command, REG_EXTENDED) != 0 ||
+        regcomp(&regex2, comment, REG_EXTENDED) != 0 ) {
+        log_err("Could not compile regex\n");
+        exit(1);
+    }
 
     while (printf("%s", prefix), output_str = fgets(read_buffer,
            DEFAULT_STDIN_BUFFER_SIZE, stdin), !feof(stdin)) {
@@ -95,17 +150,23 @@ int main(void)
         // Otherwise, convert to message and send the message and the
         // payload directly to the server.
         send_message.length = strlen(read_buffer);
-        if (send_message.length > 1) {
-            // Send the message_header, which tells server payload size
-            if (send(client_socket, &(send_message), sizeof(message), 0) == -1) {
-                log_err("Failed to send message header.");
-                exit(1);
-            }
 
-            // Send the payload (query) to server
-            if (send(client_socket, send_message.payload, send_message.length, 0) == -1) {
-                log_err("Failed to send query payload.");
-                exit(1);
+        // Ignore comments.
+        ret = regexec(&regex2, read_buffer, n_matches, &m, 0);
+        if (send_message.length > 1 && ret != 0) {
+            send_to_server(client_socket, &send_message);
+
+            // Check to see if the message is a load message. In this case,
+            // don't wait for response, send the file!
+            ret = regexec(&regex1, read_buffer, n_matches, &m, 0);
+            // If we have  match, we want to open the file and stream it to the server.
+            if (ret == 0) {
+                char* cmd = malloc(strlen(read_buffer) + 1);
+                strncpy(cmd, read_buffer, strlen(read_buffer) + 1);
+
+                process_load_command(cmd, client_socket, &send_message);
+
+                free(cmd);
             }
 
             // Always wait for server response (even if it is just an OK message)
@@ -128,8 +189,8 @@ int main(void)
                     log_err("Failed to receive message.");
                 }
                 else {
-		            log_info("Server closed connection\n");
-		        }
+                    log_info("Server closed connection\n");
+                }
                 exit(1);
             }
         }

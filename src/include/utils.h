@@ -10,6 +10,10 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#define TERMINATE_LOAD "EOF"
+
+
+
 // cs165_log(out, format, ...)
 // Writes the string from @format to the @out pointer, extendable for
 // additional parameters.

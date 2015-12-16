@@ -21,13 +21,14 @@ SOFTWARE.
 #define CS165_H
 
 #include <stdlib.h>
+#include <stdint.h>
 
 /**
  * EXTRA
  * DataType
  * Flag to mark what type of data is held in the struct.
  * You can support additional types by including this enum and using void*
- * in place of int* in db_operator simliar to the way IndexType supports
+ * in place of int64_t* in db_operator simliar to the way IndexType supports
  * additional types.
  **/
 /**
@@ -82,7 +83,7 @@ typedef struct column_index {
  **/
 typedef struct column {
     const char* name;
-    int* data;
+    int64_t* data;
     size_t size;
     size_t count;
     column_index* index;
@@ -191,7 +192,7 @@ typedef struct comparator {
 
 typedef struct result {
     size_t num_tuples;
-    int* payload;
+    int64_t* payload;
 } result;
 
 typedef enum Aggr {
@@ -211,6 +212,7 @@ typedef enum OperatorType {
     UPDATE,
     AGGREGATE,
     PRINT,
+    LOADFILE,
     NOTAVAILABLE
 } OperatorType;
 
@@ -255,14 +257,14 @@ typedef struct db_operator {
     column** columns;
 
     // Internmediaties used for PROJECT, DELETE, HASH_JOIN
-    int* pos1;
+    int64_t* pos1;
     // Needed for HASH_JOIN
-    int* pos2;
+    int64_t* pos2;
 
     // For insert/delete operations, we only use value1;
     // For update operations, we update value1 -> value2;
-    int* value1;
-    int* value2;
+    int64_t* value1;
+    int64_t* value2;
 
     // This includes several possible fields that may be used in the operation.
     Aggr agg;
@@ -397,9 +399,9 @@ status create_column(table *table, const char* name, column** col);
  **/
 status create_index(column* col, IndexType type);
 
-status insert(column *col, int data);
-status delete(column *col, int *pos);
-status update(column *col, int *pos, int new_val);
+status insert(column *col, int64_t data);
+status delete(column *col, int64_t *pos);
+status update(column *col, int64_t *pos, int64_t new_val);
 status fetch(column *col, column *pos, result **r);
 status col_scan(comparator *f, column *col, result **r);
 status index_scan(comparator *f, column *col, result **r);

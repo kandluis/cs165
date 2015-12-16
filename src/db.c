@@ -52,10 +52,78 @@ status drop_db(db* db)
     return global;
 }
 
-status sync_db(db* db)
-{
-    (void) db;
-    return global;
+// Writes out a table.
+status sync_table(table* tbl){
+    char fname[DEFAULT_ARRAY_SIZE];
+    status s;
+    for (size_t i = 0; i < tbl->col_count; i++) {
+        sprintf(fname, "%s.data", tbl->col[i]->name);
+        FILE* data = fopen(fname, "wb");
+        if (!data) {
+            s.code = ERROR;
+            s.error_message = "Could not open file.";
+            log_err("Could not open %s\n", fname);
+            return s;
+        }
+        if (tbl->col[i]->count != fwrite(tbl->col[i]->data, sizeof(int64_t), tbl->col[i]->count, data)) {
+            s.code = ERROR;
+            s.error_message = "Could not write data to file!";
+            log_err("Could not write data to file!");
+            return s;
+        }
+    }
+
+    s.code = OK;
+    return s;
+}
+
+status sync_db(db* db) {
+    // We need to create a metadata file with the information in the database
+    char fname[DEFAULT_ARRAY_SIZE];
+    status s;
+    sprintf(fname, "%s.meta", db->name);
+    FILE* mfile = fopen(fname, "w");
+    if (!mfile) {
+        s.code = ERROR;
+        s.error_message = "Could not open file.\n";
+        log_err("Could not open file %s", fname);
+        return s;
+    }
+
+    // Iterate over the tables!
+    for (size_t i = 0; i < db->table_count; i++){
+        if (fprintf(mfile, "%s,%zd,", db->tables[i]->name, db->tables[i]->col_count) < 0) {
+            log_err("Unable write to file %s\n", fname);
+            s.code = ERROR;
+            s.error_message = "Unable to write to file";
+            fclose(mfile);
+            return s;
+        }
+        // Write out the column names for the table
+        for(size_t j = 0; j < db->tables[i]->col_count - 1; j++) {
+            if (fprintf(mfile, "%s,%zd,", db->tables[i]->col[j]->name,
+                db->tables[i]->col[j]->count) < 0) {
+                log_err("Unable to write to file %s\n", fname);
+                s.code = ERROR;
+                s.error_message = "Unable to write to file!\n";
+                fclose(mfile);
+                return s;
+            }
+        }
+        // Last one is writtne with a newline
+        if (fprintf(mfile, "%s,%zd\n",
+            db->tables[i]->col[db->tables[i]->col_count - 1]->name,
+            db->tables[i]->col[db->tables[i]->col_count - 1]->count) < 0) {
+            log_err("Unable to write to file %s\n", fname);
+            s.error_message = "Unable to write to file";
+            s.code = ERROR;
+            fclose(mfile);
+            return s;
+        }
+        s = sync_table(db->tables[i]);
+    }
+    fclose(mfile);
+    return s;
 }
 
 status create_table(db* db, const char* name, size_t num_columns, table** table)
@@ -201,18 +269,16 @@ status create_index(column* col, IndexType type)
     return global;
 }
 
-status insert(column* col, int data)
+status insert(column* col, int64_t data)
 {
     // Check the data size in case we need to resize
     status ret;
     if (col->count >= col->size) {
         log_info("No space for data in column %s. Creating more space.\n", col->name);
         size_t newcount = 2 * col->count + 1;
-        size_t newsize = newcount * sizeof(int);
-        size_t oldsize = col->count * sizeof(int);
-        if (oldsize == 0) {
-            newsize = DEFAULT_ARRAY_SIZE;
-            col->data = malloc(sizeof(int) * newsize);
+        if (newcount == 1) {
+            newcount = DEFAULT_ARRAY_SIZE;
+            col->data = malloc(sizeof(int64_t) * newcount);
             if (!col->data) {
                 ret.code = ERROR;
                 ret.error_message = "Failed allocating space for data";
@@ -221,13 +287,15 @@ status insert(column* col, int data)
             }
         }
         else {
+            size_t newsize = newcount * sizeof(int64_t);
+            size_t oldsize = col->count * sizeof(int64_t);
             void* tmp = resize(col->data, oldsize, newsize);
             free(col->data);
             col->data = tmp;
         }
 
         // Update tables
-        col->size = newsize;
+        col->size = newcount;
     }
 
     // Set the value into the column
@@ -236,13 +304,13 @@ status insert(column* col, int data)
 
     return ret;
 }
-status delete(column* col, int* pos)
+status delete(column* col, int64_t* pos)
 {
     (void) col;
     (void) pos;
     return global;
 }
-status update(column* col, int* pos, int new_val)
+status update(column* col, int64_t* pos, int64_t new_val)
 {
     (void) col;
     (void) pos;
@@ -251,7 +319,7 @@ status update(column* col, int* pos, int new_val)
 }
 
 
-int check(comparator* f, int value){
+int check(comparator* f, int64_t value){
     comparator* cur = f;
     int success = 1; // 1 is True
     Junction mode = AND; // Start with True && ...
@@ -270,7 +338,7 @@ int check(comparator* f, int value){
                 success = success && (value <= cur->p_val);
             }
             else if (cur->type == (EQUAL | GREATER_THAN)) {
-                success = success && (value => cur->p_val);
+                success = success && (value >= cur->p_val);
             }
             else {
                 log_err("Unsupported comparator type!");
@@ -291,7 +359,7 @@ int check(comparator* f, int value){
                 success = success || (value <= cur->p_val);
             }
             else if (cur->type == (EQUAL | GREATER_THAN)) {
-                success = success || (value => cur->p_val);
+                success = success || (value >= cur->p_val);
             }
             else {
                 log_err("Unsupported comparator type!");
@@ -320,7 +388,7 @@ status fetch(column* col, column* pos,  result** r){
     }
 
     // Allocate space for result
-    (*r)->payload = malloc(pos->size * sizeof(int));
+    (*r)->payload = malloc(pos->size * sizeof(int64_t));
     (*r)->num_tuples = pos->size;
 
     // Copy out to the results
@@ -343,12 +411,12 @@ status col_scan(comparator* f, column* col, result** r)
         return ret;
     }
 
-    int* pos = (*r)->payload;
-    int size = (*r)->num_tuples;
+    int64_t* pos = (*r)->payload;
+    size_t size = (*r)->num_tuples;
     size_t res_pos = 0;
 
     // We override with a new array because this data will be saved too!
-    (*r)->payload = calloc(size, sizeof(int));
+    (*r)->payload = calloc(size, sizeof(int64_t));
 
     // This is a full column scan.
     if (!pos){

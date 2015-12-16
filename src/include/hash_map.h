@@ -58,4 +58,5 @@ bool insert_into_map(hash_map* map, char* key, void* value);
 */
 void* find_in_map(hash_map* map, char* key);
 
+
 #endif  // SRC_INCLUDE_HASH_MAP_H_

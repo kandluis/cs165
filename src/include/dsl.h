@@ -13,7 +13,7 @@
 
 // Currently we have 4 DSL commands to parse.
 // TODO(USER): you will need to increase this to track the commands you support.
-#define NUM_DSL_COMMANDS (14)
+#define NUM_DSL_COMMANDS (15)
 
 // This helps group similar DSL commands together.
 // For example, some queries can be parsed together:
@@ -38,7 +38,8 @@ typedef enum DSLGroup {
     AVERAGE,
     VECTOR_OPERATION,
     TUPLE,
-    SHUTDOWN
+    SHUTDOWN,
+    LOADCOMMAND
     // TODO(USER): Add more here...
 } DSLGroup;
 
@@ -67,5 +68,7 @@ extern const char* extreme_index_command;
 extern const char* average_command;
 extern const char* vect_operation_command;
 extern const char* tuple_command;
+extern const char* load_command;
+extern const char* shutdown_command;
 
 #endif // DSL_H__
