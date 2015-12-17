@@ -4,15 +4,16 @@
 # to your project
 
 all: client server
+debug: client_debug server_debug
 
 # C-compiler settings
 CC = gcc -std=c99 -g -ggdb3
 
 # Default optimization level
-O ?= 0
+O ?= 3
 
 # Flags and other libraries
-override CFLAGS += -Wall -Wextra -pedantic -pthread -O$(O) -I$(INCLUDES) -DLOG -DLOG_ERR -DLOG_INFO
+override CFLAGS += -Wall -Wextra -pedantic -pthread -O$(O) -I$(INCLUDES)
 LDFLAGS =
 LIBS =
 INCLUDES = include
@@ -26,6 +27,7 @@ ifneq ($(DEPFILES),)
 include $(DEPFILES)
 endif
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
+DEBUGFLAGS = -DLOG -DLOG_ERR -DLOG_INFO
 
 # Dependency compilation
 ifneq ($(DEP_CC),$(CC) $(CFLAGS) $(DEPCFLAGS) $(O))
@@ -54,8 +56,14 @@ $(DEPSDIR)/stamp $(BUILDSTAMP):
 client: client.o utils.o
 	$(CC) $(CFLAGS) $(DEPCFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
+client_debug: client.o utils.o
+	$(CC) $(CFLAGS) $(DEBUGFLAGS) $(DEPCFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
 server: server.o db.o dsl.o hash_map.o parser.o utils.o var_store.o
 	$(CC) $(CFLAGS) $(DEPCFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+server_debug: server.o db.o dsl.o hash_map.o parser.o utils.o var_store.o
+	$(CC) $(CFLAGS) $(DEBUGFLAGS) $(DEPCFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 clean:
 	rm -f client server *.o *~ *.bak core *.core cs165_unix_socket

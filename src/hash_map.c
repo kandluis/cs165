@@ -7,6 +7,7 @@
 
 #include "include/utils.h"
 #include "include/hash_map.h"
+#include "include/cs165_api.h"
 
 // The has function used by this particular implementation.
 // Source (http://stackoverflow.com/questions/7666509/hash-function-for-string)
@@ -77,9 +78,19 @@ void* find_in_map(hash_map* map, const char* key)
 
 // Frees the linked list starting at head.
 void clear_element(cont_node* head) {
+    column* c;
     if (head) {
         for (size_t i = 0; i < head->count; i++) {
             free(head->link[i].key);
+
+            // We cast all to columns and see if the name is set.
+            c = (column *) head->link[i].value;
+            if (!c->name) {
+                // We also assume it is a column type, as all of our variables
+                // are stored as columns.
+                free(c->data);
+            }
+
             free(head->link[i].value);
         }
         head->count = 0;

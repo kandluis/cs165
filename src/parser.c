@@ -245,7 +245,6 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // This gives us the "unsorted"
         char* sorting_str = strtok(NULL, comma);
-        (void) sorting_str;
 
         log_info("create_column(%s, %s, %s)\n", full_name, tbl_name, sorting_str);
 
@@ -256,7 +255,6 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             log_err("No table found. %s: error at line: %d\n", __func__, __LINE__);
             ret.code = ERROR;
             ret.error_message = "Table does not exist.\n";
-            return ret;
         }
         else {
             // Check to see if column already exists.
@@ -269,7 +267,18 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                     ret.error_message = "Column creation failed!\n";
                 }
                 else {
-                    ret.code = OK;
+                    // Set the correct index type
+                    if (strcmp(sorting_str, "sorted") == 0) {
+                        col1->index = calloc(1, sizeof(struct column_index));
+                        if (!col1->index) {
+                            log_err("Index creation failed. ^s: error at line %d\n",
+                                __func__, __LINE__);
+                            ret.code = ERROR;
+                            ret.error_message = "Failed inserting sorted column";
+                        }
+                        col1->index->type = SORTED;
+                        col1->index->index = (void*) col1->data;
+                    }
                     set_resource(full_name, col1);
                 }
             }
@@ -501,6 +510,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             log_err("Column %s does not exists. Cannot select!", col_name);
             ret.code = ERROR;
             ret.error_message = "Column does not exist!";
+            free(op->var_name);
             free(str_cpy);
             return ret;
         }
@@ -515,6 +525,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                     posn_name, __func__, __LINE__);
                 ret.code = ERROR;
                 ret.error_message = "Undefined variable";
+                free(op->var_name);
                 free(str_cpy);
                 return ret;
             }
@@ -528,6 +539,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             log_err("Fetch operation failed %s. %s: error in line %d",
                 s.error_message, __func__, __LINE__);
             free(str_cpy);
+            free(op->var_name);
             ret.code = ERROR;
             ret.error_message = "Fetch failed";
             return ret;
@@ -542,6 +554,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         set_var(op->var_name, narray);
 
         free(str_cpy);
+        free(op->var_name);
+        free(r);
         ret.code = OK;
         return ret;
     }
@@ -604,6 +618,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         col->size = 1;
         col->count = 1;
         set_var(val_str, col);
+
+        free(str_cpy);
 
         ret.code = OK;
         return ret;
@@ -774,6 +790,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         col->size = 1;
         col->count = 1;
         set_var(scl_str, col);
+        free(str_cpy);
 
         ret.code = OK;
         return ret;
@@ -852,11 +869,12 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             ret.error_message = "Unsupported operation.\n";
             ret.code = ERROR;
             log_err(ret.error_message);
+            free(str_cpy);
             return ret;
         }
 
         set_var(vec_val_str, res);
-
+        free(str_cpy);
         ret.code = OK;
         return ret;
     }
@@ -935,7 +953,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Eveyrthing went well!
+        free(str_cpy);
         ret.code = OK;
+
         return ret;
     }
     else if (d->g == LOADCOMMAND) {
@@ -979,6 +999,11 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                     fclose(mfile);
                     return s;
                 }
+
+                // Free some data
+                free(db->name);
+                free(db->tables);
+                free(db);
             }
             fclose(mfile);
         }

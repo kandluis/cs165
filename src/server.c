@@ -82,7 +82,7 @@ char* execute_db_operator(db_operator* query) {
 
         // Iterate over the columns and insert the values
         for(size_t i = 0; i < tbl->col_count; i++) {
-            status s = insert(query->columns[i], query->value1[i].i);
+            status s = insert(query->columns[i], query->value1[i]);
             if (s.code == ERROR) {
                 ret = s.error_message;
                 break;
@@ -115,6 +115,7 @@ char* execute_db_operator(db_operator* query) {
 
         // Add it to the var_map so we can access it later!
         set_var(query->var_name, res);
+        free(query->var_name);
 
         // Free everything we've malloced.
         free(query->columns);
@@ -249,12 +250,15 @@ void load_data(int client_socket, message* recv_message){
             if (!str) {
                 log_err("Could not parse. Error in load.\n", buffer);
             }
-            status s = insert(cols[i], atoi(str));
+            Data datum;
+            datum.i = atoi(str);
+            status s = insert(cols[i], datum);
             if (s.code != OK) {
                 log_err("Could not insert value %s into column during load.", str);
             }
         }
     }
+    free(cols);
 }
 
 /**
@@ -335,6 +339,12 @@ int handle_client(int client_socket) {
                 ret = 1;
                 break;
             }
+
+            // Free the message
+            if (strlen(result) > 1) {
+                free(result);
+            }
+
         }
     } while (!done);
 

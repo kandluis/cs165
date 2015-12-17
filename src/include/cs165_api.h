@@ -87,7 +87,7 @@ typedef struct column_index {
  } Data;
 
 typedef struct column {
-    const char* name;
+    char* name;
     Data* data;
     size_t size;
     size_t count;
@@ -111,11 +111,12 @@ typedef struct column {
  * - table_size, the maximum number of columns the table can contain.
  **/
 typedef struct table {
-    const char* name;
+    char* name;
     size_t col_count;
     column** col;
     size_t length;
     size_t table_size;
+    column* cluster_column;     // A pointer to the clustering column.
 } table;
 
 /**
@@ -126,7 +127,7 @@ typedef struct table {
  * - tables: the pointer to the array of tables contained in the db.
  **/
 typedef struct db {
-    const char* name;
+    char* name;
     size_t table_count;
     size_t tables_available;
     table** tables;
@@ -423,7 +424,8 @@ status create_column(table *table, const char* name, column** col);
  **/
 status create_index(column* col, IndexType type);
 
-status insert(column *col, int data);
+status insert(column *col, Data data);
+status insert_pos(column* col, size_t pos, Data data);
 status delete(column *col, int *pos);
 status update(column *col, int *pos, int new_val);
 status fetch(column *col, column *pos, result **r);

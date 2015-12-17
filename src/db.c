@@ -52,7 +52,7 @@ status load_table(FILE* metadata, table* tbl) {
     // Read in each column.
     FILE* fp;
     status ret;
-    for(size_t i = 0; i < tbl->table_size; i++) {
+    for (size_t i = 0; i < tbl->table_size; i++) {
         column* col = calloc(1, sizeof(struct column));
         if (fscanf(metadata,
             (i < tbl->table_size - 1) ? " %s %zu " : " %s %zu\n",
@@ -187,6 +187,19 @@ status sync_table(table* tbl){
             log_err("Could not write data to file!");
             return s;
         }
+
+        // Free the column.
+        free(tbl->col[i]->name);
+        free(tbl->col[i]->data);
+        if (tbl->col[i]->index) {
+            if (tbl->col[i]->index->type == B_PLUS_TREE) {
+                // TODO (FREE THE B_PLUS TREE) -- also, write it out to
+                free(tbl->col[i]->index->index);
+            }
+            free(tbl->col[i]->index);
+        }
+        free(tbl->col[i]->index);
+        free(tbl->col[i]);
     }
 
     s.code = OK;
@@ -237,6 +250,11 @@ status sync_db(db* db) {
             return s;
         }
         s = sync_table(db->tables[i]);
+
+        // Free what we can!
+        free(db->tables[i]->name);
+        free(db->tables[i]->col);
+        free(db->tables[i]);
     }
     fclose(mfile);
     return s;
@@ -381,16 +399,18 @@ status create_column(table* table, const char* name, column** col)
 
 status create_index(column* col, IndexType type)
 {
+    if (type == SORTED) {
+        // We assume the column has no data.
+    }
     (void) col;
     (void) type;
     return global;
 }
 
-status insert(column* col, int data)
-{
-    // Check the data size in case we need to resize
+// Inserts the given value into positions specified by pos.
+status insert_pos(column *col, size_t pos, Data data) {
     status ret;
-    if (col->count >= col->size) {
+     if (col->count >= col->size) {
         log_info("No space for data in column %s. Creating more space.\n", col->name);
         size_t newcount = 2 * col->count + 1;
         if (newcount == 1) {
@@ -415,12 +435,26 @@ status insert(column* col, int data)
         col->size = newcount;
     }
 
-    // Set the value into the column
-    col->data[col->count++].i = data;
+    // Set the value into the column by shifting everything down!
+    Data tmp;
+    while (pos < col->count) {
+        tmp = col->data[pos];
+        col->data[pos++] = data;
+        data = tmp;
+    }
+    col->data[col->count++] = data;
     ret.code = OK;
 
+    // We've added a new element
     return ret;
+
 }
+
+status insert(column* col, Data data)
+{
+    return insert_pos(col, col->count, data);
+}
+
 status delete(column* col, int* pos)
 {
     (void) col;
@@ -549,7 +583,7 @@ status col_scan(comparator* f, column* col, result** r)
     // We use the pos indicated in the res.
     else {
         for(size_t ii = 0; ii < (*r)->num_tuples; ii++) {
-            if (check(f, col->data[pos[ii].i].i)) {
+            if (check(f, col->data[pos[ii].li].i)) {
                 (*r)->payload[res_pos++] = pos[ii];
             }
         }
