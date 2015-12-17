@@ -533,6 +533,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         narray->data = r->payload;
         narray->size = r->num_tuples;
         narray->count = r->num_tuples;
+        narray->average = NULL;
         set_var(op->var_name, narray);
 
         free(str_cpy);
@@ -596,6 +597,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         col->data = res;
         col->size = 1;
         col->count = 1;
+        col->average = NULL;
         set_var(val_str, col);
 
         ret.code = OK;
@@ -681,6 +683,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         col->data = value;
         col->size = 1;
         col->count = 1;
+        col->average = NULL;
         set_var(val_str, col);
 
         // Determine index to store
@@ -693,6 +696,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         col->data = res;
         col->size = 1;
         col->count = 1;
+        col->average = NULL;
         set_var(pos_str, col);
 
         ret.code = OK;
@@ -737,7 +741,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         // Size of vector is 1
         column* col = malloc(sizeof(struct column));
         // TODO: Figure out how to deal with these!
-        col->data = (int*) res;
+        col->data = NULL;
+        col->average = res;
         col->size = 1;
         col->count = 1;
         set_var(scl_str, col);
@@ -800,6 +805,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* res = malloc(sizeof(struct column));
         res->size = n;
         res->count = n;
+        res->average = NULL;
         res->data = malloc(sizeof(int) * res->size);
 
         // Determine operation to be performed!
@@ -862,13 +868,16 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         char* col_name = strtok(args, comma);
         column* col = get_resource(col_name);
         if (!col){
-            log_err("Variable %s not defined. %s: error at line %d\n",
-                col_name, __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Undefined variable";
-            free(str_cpy);
-            free(op->columns);
-            return ret;
+            col = get_var(col_name);
+            if (!col) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    col_name, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                free(op->columns);
+                return ret;
+            }
         }
         op->columns[0] = col;
         size_t col_count = col->count;

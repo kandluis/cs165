@@ -48,4 +48,5 @@ void* resize(void* data, size_t osize, size_t nsize);
 // freeing the memory at the return pointer location.
 char* copystr(const char* src);
 
+
 #endif /* __UTILS_H__ */

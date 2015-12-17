@@ -110,6 +110,7 @@ char* execute_db_operator(db_operator* query) {
         res->data = r->payload;
         res->size = r->num_tuples;
         res->count = r->num_tuples;
+        res->average = NULL;
 
         // Add it to the var_map so we can access it later!
         set_var(query->var_name, res);
@@ -136,13 +137,26 @@ char* execute_db_operator(db_operator* query) {
         char* res = malloc(sizeof(char) * (1 + ((MAX_STRING_LENGTH * ncols) + 1) * rows));
         res[0] = '\0';
         ret = res; // Keep track of the start.
-        for(size_t row = 0; row < rows; row++) {
-            for (int col = 0; col < ncols - 1; col++) {
-                // Generate the string to hold a single digit
-                res += sprintf(res, "%d,", query->columns[col]->data[row]);
+
+        // Hacky way to check for average
+        if (query->columns[0]->average) {
+            // Just printing out the average!
+            res += sprintf(res, "%f\n", query->columns[0]->average[0]);
+        }
+        else {
+            for(size_t row = 0; row < rows; row++) {
+                for (int col = 0; col < ncols - 1; col++) {
+                    // Generate the string to hold a single digit
+                    res += sprintf(res, "%d,", query->columns[col]->data[row]);
+                }
+                // For the last digit, don't add comma
+                res += sprintf(res, "%d\n", query->columns[ncols - 1]->data[row]);
             }
-            // For the last digit, don't add comma
-            res += sprintf(res, "%d", query->columns[ncols - 1]->data[row]);
+        }
+
+        // Drop the final newline.
+        if (ret != res) {
+            *(res - 1) = '\0';
         }
 
         // NEED TO FREE COLS AND POS1

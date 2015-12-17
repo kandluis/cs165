@@ -369,6 +369,7 @@ status create_column(table* table, const char* name, column** col)
     (*col)->name = copystr(name);
     (*col)->size = 0;
     (*col)->count = 0;
+    (*col)->average = NULL;
 
     // TODO (data, index)
     (*col)->data = NULL;

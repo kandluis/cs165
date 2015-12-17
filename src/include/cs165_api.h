@@ -31,13 +31,11 @@ SOFTWARE.
  * in place of int* in db_operator simliar to the way IndexType supports
  * additional types.
  **/
-/**
 typedef enum DataType {
      INT,
      LONG,
      // Others??
 } DataType;
-**/
 
 /**
  * IndexType
@@ -87,6 +85,7 @@ typedef struct column {
     size_t size;
     size_t count;
     column_index* index;
+    double* average;    // Overload it to store the average. Needs to be taken care of.
 } column;
 
 /**
