@@ -319,7 +319,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             op->type = INSERT;
 
             // Add table
-            op->tables = malloc(sizeof(struct table*));
+            op->tables = calloc(1, sizeof(struct table*));
             op->tables[0] = tbl1;
 
             // Add column pointers
@@ -328,12 +328,12 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             // Add values extracted from input by users
             char* count_str;
             int count;
-            op->value1 = malloc(sizeof(int) * tbl1->col_count);
+            op->value1 = calloc(tbl1->col_count, sizeof(Data));
             for (size_t i = 0; i < tbl1->col_count; i++) {
                 count_str = strtok(NULL, comma);
                 if (count_str) {
                     count = atoi(count_str);
-                     op->value1[i] = count;
+                     op->value1[i].i = count;
                 } else {
                     log_err("Could not parse insert value into table %s\n", tbl_name);
                 }
@@ -388,7 +388,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
             // We overload these operator fields.
             op->pos1 = posn_vec->data;
-            op->value1 = (int*) &(posn_vec->count);
+            op->pos1type = posn_vec->type;
+            op->value1 = (Data*) &(posn_vec->count);
+            op->value1type = LONGINT;
         }
         else {
             op->pos1 = NULL;
@@ -399,18 +401,21 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         char* col_name = strtok((d->g == SELECT_COLUMN ) ?  args : NULL, comma);
         column* col1 = get_resource(col_name);
         if (!col1) {
-            log_err("Column %s does not exists. Cannot select!", col_name);
-            ret.code = ERROR;
-            ret.error_message = "Column does not exist!";
-            free(str_cpy);
-            return ret;
+            col1 = get_var(col_name);
+            if (!col1) {
+                log_err("Column %s does not exists. Cannot select!", col_name);
+                ret.code = ERROR;
+                ret.error_message = "Column does not exist!";
+                free(str_cpy);
+                return ret;
+            }
         }
 
         // We now prepare the query operator
         op->type = SELECT;
         op->tables = NULL;
 
-        op->columns = malloc(sizeof(struct column*));
+        op->columns = calloc(1, sizeof(struct column*));
         if (!(op->columns)) {
             log_err("Low memory. %s: error at line %d\n", __func__, __LINE__);
             ret.code = ERROR;
@@ -442,7 +447,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         if (strcmp(low_str, "null") != 0) {
             int low = atoi(low_str);
             // TODO FREE THIS
-            comparator* tmp = malloc(sizeof(struct comparator));
+            comparator* tmp = calloc(1, sizeof(struct comparator));
             tmp->p_val = low;
             tmp->col = col1;
             tmp->type = GREATER_THAN | EQUAL;
@@ -455,7 +460,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         if (strcmp(high_str, "null") != 0) {
             int high = atoi(high_str);
             // TODO FREE THIS
-            comparator* tmp = malloc(sizeof(struct comparator));
+            comparator* tmp = calloc(1, sizeof(struct comparator));
             tmp->p_val = high;
             tmp->col = col1;
             tmp->type = LESS_THAN;
@@ -529,11 +534,11 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Store into the variable pool
-        column* narray = malloc(sizeof(struct column));
+        column* narray = calloc(1, sizeof(struct column));
         narray->data = r->payload;
+        narray->type = r->type;
         narray->size = r->num_tuples;
         narray->count = r->num_tuples;
-        narray->average = NULL;
         set_var(op->var_name, narray);
 
         free(str_cpy);
@@ -568,19 +573,19 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             }
         }
 
-        // Find the minimum or maximum
-        int* res = malloc(sizeof(int));
+        // Find the minimum or maximum (ONLY SUPPORT INTEGERS)
+        Data* res = calloc(1, sizeof(Data));
         *res = vec_val->data[0];
         if (strcmp(fun_str, "min") == 0) {
             for (size_t i = 0; i < vec_val->count; i++) {
-                if (vec_val->data[i] < *res) {
+                if (vec_val->data[i].i < res->i) {
                     *res = vec_val->data[i];
                 }
             }
         }
         else if (strcmp(fun_str, "max") == 0) {
             for (size_t i = 0; i < vec_val->count; i++) {
-                if (vec_val->data[i] > *res) {
+                if (vec_val->data[i].i > res->i) {
                     *res = vec_val->data[i];
                 }
             }
@@ -593,11 +598,11 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Store the result the a vector of length 1
-        column* col = malloc(sizeof(struct column));
+        column* col = calloc(1, sizeof(struct column));
         col->data = res;
+        col->type = INT;
         col->size = 1;
         col->count = 1;
-        col->average = NULL;
         set_var(val_str, col);
 
         ret.code = OK;
@@ -651,19 +656,19 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Find the index of the minimum or maximum
-        int* res = malloc(sizeof(int));
+        Data* res = calloc(1, sizeof(Data));
         *res = vec_val->data[0];
         if (strcmp(fun_str, "min") == 0) {
             for (size_t i = 0; i < vec_val->count; i++) {
-                if (vec_val->data[i] < *res) {
-                    *res = i;
+                if (vec_val->data[i].i < res->i) {
+                    res->i = i;
                 }
             }
         }
         else if (strcmp(fun_str, "max") == 0) {
             for (size_t i = 0; i < vec_val->count; i++) {
-                if (vec_val->data[i] > *res) {
-                    *res = i;
+                if (vec_val->data[i].i > res->i) {
+                    res->i = i;
                 }
             }
         }
@@ -675,28 +680,28 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Store the value result
-        int* value = malloc(sizeof(int));
-        *value = vec_val->data[*res];
+        Data* value = calloc(1, sizeof(Data));
+        *value = vec_val->data[res->i];
 
         // Store in an array of length 1
-        column* col = malloc(sizeof(struct column));
+        column* col = calloc(1, sizeof(struct column));
         col->data = value;
+        col->type = INT;
         col->size = 1;
         col->count = 1;
-        col->average = NULL;
         set_var(val_str, col);
 
         // Determine index to store
         if (vec_pos) {
-            *res = vec_pos->data[*res];
+            *res = vec_pos->data[res->i];
         }
 
         // Store in an array of length 1
-        col = malloc(sizeof(struct column));
+        col = calloc(1, sizeof(struct column));
         col->data = res;
+        col->type = INT;
         col->size = 1;
         col->count = 1;
-        col->average = NULL;
         set_var(pos_str, col);
 
         ret.code = OK;
@@ -732,17 +737,40 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // Find the average
         long double sum = 0.;
-        for (size_t i = 0; i < vec_val->count; i++) {
-            sum += vec_val->data[i];
+        if (vec_val->type == LONGINT) {
+            for (size_t i = 0; i < vec_val->count; i++) {
+                sum += vec_val->data[i].li;
+            }
         }
-        double* res = malloc(sizeof(double));
+        else if (vec_val->type == DOUBLE) {
+            for (size_t i = 0; i < vec_val->count; i++) {
+                sum += vec_val->data[i].f;
+            }
+
+        }
+        else if (vec_val->type == INT) {
+            for (size_t i = 0; i < vec_val->count; i++) {
+                sum += vec_val->data[i].i;
+            }
+
+        }
+        else {
+            log_err("Unsupported data type. %s: error in line %d\n",
+                __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Unsupported data type";
+            free(str_cpy);
+            return ret;
+
+        }
+        double* res = calloc(1, sizeof(double));
         *res = sum / ((long double) vec_val->count);
 
         // Size of vector is 1
-        column* col = malloc(sizeof(struct column));
+        column* col = calloc(1, sizeof(struct column));
         // TODO: Figure out how to deal with these!
-        col->data = NULL;
-        col->average = res;
+        col->data = (Data*) res;
+        col->type = DOUBLE;
         col->size = 1;
         col->count = 1;
         set_var(scl_str, col);
@@ -802,22 +830,22 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
         size_t n = vec_val1->count;
         // Allocate space for the result.
-        column* res = malloc(sizeof(struct column));
+        column* res = calloc(1, sizeof(struct column));
         res->size = n;
         res->count = n;
-        res->average = NULL;
-        res->data = malloc(sizeof(int) * res->size);
+        res->data = calloc(res->size, sizeof(Data));
+        res->type = LONGINT;
 
         // Determine operation to be performed!
         // TODO (What would be really cool would be to do all of this lazily!)
         if (strcmp(fun_str, "sub") == 0) {
             for (size_t i = 0; i < n; i++) {
-                res->data[i] = vec_val1->data[i] - vec_val2->data[i];
+                res->data[i].li = (long int) vec_val1->data[i].i - (long int) vec_val2->data[i].i;
             }
         }
         else if (strcmp(fun_str, "add") == 0) {
             for (size_t i = 0; i < n; i++) {
-                res->data[i] = vec_val1->data[i] + vec_val2->data[i];
+                res->data[i].li = (long int) vec_val1->data[i].i + (long int) vec_val2->data[i].i;
             }
         }
         else {
@@ -862,9 +890,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // Extract the first column!
         status ret;
-        op->columns = malloc(sizeof(struct column*) * ncols);
-        op->pos1 = malloc(sizeof(int));
-        *(op->pos1) = ncols;  // We override this to pass along the information  about ncols
+        op->columns = calloc(ncols, sizeof(struct column*));
+        op->pos1 = calloc(1, sizeof(Data));
+        op->pos1->i = ncols;  // We override this to pass along the information  about ncols
         char* col_name = strtok(args, comma);
         column* col = get_resource(col_name);
         if (!col){

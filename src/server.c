@@ -49,7 +49,7 @@ int changed;
  **/
 db_operator* parse_command(message* recv_message, message* send_message) {
     send_message->status = OK_WAIT_FOR_RESPONSE;
-    db_operator *dbo = malloc(sizeof(db_operator));
+    db_operator *dbo = calloc(1, sizeof(db_operator));
     // Here you parse the message and fill in the proper db_operator fields for
     // now we just log the payload
     cs165_log(stdout, recv_message->payload);
@@ -82,7 +82,7 @@ char* execute_db_operator(db_operator* query) {
 
         // Iterate over the columns and insert the values
         for(size_t i = 0; i < tbl->col_count; i++) {
-            status s = insert(query->columns[i], query->value1[i]);
+            status s = insert(query->columns[i], query->value1[i].i);
             if (s.code == ERROR) {
                 ret = s.error_message;
                 break;
@@ -94,9 +94,10 @@ char* execute_db_operator(db_operator* query) {
         free(query->value1);
     }
     else if (query->type == SELECT) {
-        result* r = malloc(sizeof(struct result));
+        result* r = calloc(1, sizeof(struct result));
         r->payload = query->pos1;
-        r->num_tuples = (query->value1) ? *(query->value1) : (int) query->columns[0]->count;
+        r->type = query->pos1type;
+        r->num_tuples = (query->value1) ? (size_t) query->value1->li : query->columns[0]->count;
 
         status s = col_scan(query->c, query->columns[0], &r);
         if (s.code != OK) {
@@ -106,11 +107,11 @@ char* execute_db_operator(db_operator* query) {
         }
 
         // The results payload is NEW! Now we can store it as an Array.
-        column* res = malloc(sizeof(struct column));
+        column* res = calloc(1, sizeof(struct column));
         res->data = r->payload;
         res->size = r->num_tuples;
         res->count = r->num_tuples;
-        res->average = NULL;
+        res->type = r->type;
 
         // Add it to the var_map so we can access it later!
         set_var(query->var_name, res);
@@ -130,27 +131,51 @@ char* execute_db_operator(db_operator* query) {
 
         // Need to construct a string with the result
         size_t rows = query->columns[0]->count;
-        int ncols = *query->pos1;
+        int ncols = query->pos1->i;
 
         // We allocate space for the result based on upper bound estimate.
         // TODO(luisperez): Dynamically resize to avoid buffer overflow problems!
-        char* res = malloc(sizeof(char) * (1 + ((MAX_STRING_LENGTH * ncols) + 1) * rows));
+        char* res = calloc(1 + ((MAX_STRING_LENGTH * ncols) + 1) * rows, sizeof(char));
         res[0] = '\0';
         ret = res; // Keep track of the start.
 
-        // Hacky way to check for average
-        if (query->columns[0]->average) {
-            // Just printing out the average!
-            res += sprintf(res, "%f\n", query->columns[0]->average[0]);
-        }
-        else {
-            for(size_t row = 0; row < rows; row++) {
-                for (int col = 0; col < ncols - 1; col++) {
-                    // Generate the string to hold a single digit
-                    res += sprintf(res, "%d,", query->columns[col]->data[row]);
+        column* column;
+        for(size_t row = 0; row < rows; row++) {
+            for (int col = 0; col < ncols - 1; col++) {
+                // Grab the column
+                column = query->columns[col];
+                // Grab the value
+                if (column->type == LONGINT) {
+                    res += sprintf(res, "%ld,", column->data[row].li);
                 }
-                // For the last digit, don't add comma
-                res += sprintf(res, "%d\n", query->columns[ncols - 1]->data[row]);
+                else if (column->type == DOUBLE) {
+                    res += sprintf(res, "%.12f,", column->data[row].f);
+                }
+                else if (column->type == INT) {
+                    res += sprintf(res, "%d,", column->data[row].i);
+                }
+                else {
+                    log_err("Incompatible type!");
+                    continue;
+                }
+                // Generate the string to hold a single digit
+
+            }
+            // For the last digit, don't add comma
+            column = query->columns[ncols - 1];
+            // Grab the value
+            if (column->type == LONGINT) {
+                res += sprintf(res, "%ld\n", column->data[row].li);
+            }
+            else if (column->type == DOUBLE) {
+                res += sprintf(res, "%.12f\n", column->data[row].f);
+            }
+            else if (column->type == INT) {
+                res += sprintf(res, "%d\n", column->data[row].i);
+            }
+            else {
+                log_err("Incompatible type!");
+                continue;
             }
         }
 
@@ -195,7 +220,7 @@ void load_data(int client_socket, message* recv_message){
     }
 
     // Now we can parse each col.
-    column** cols = malloc(sizeof(struct column*) * ncol);
+    column** cols = calloc(sizeof(struct column*), ncol);
     cols[0] = get_resource(strtok(buffer, ","));
     if (!cols[0]) {
         log_err("Resource not found. Column name invalid: %s.", buffer);
@@ -389,7 +414,7 @@ void load_server(void) {
     // Allocate space for the databases
     databases.count = ndbs;
     databases.size = ndbs;
-    databases.data = malloc(sizeof(struct db*) * ndbs);
+    databases.data = calloc(sizeof(struct db*), ndbs);
     if (!databases.data) {
         log_err("Unable to allocate space for persisted data!");
         return;
@@ -397,7 +422,7 @@ void load_server(void) {
 
     // Read in each database!
     for (size_t i = 0; i < ndbs; i++) {
-        db* db =  malloc(sizeof(struct db));
+        db* db =  calloc(sizeof(struct db), 1);
         db->tables_available = 0;
 
         // Store the name and table count

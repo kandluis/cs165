@@ -183,6 +183,8 @@ int main(void)
 
                         // Server has requested that we shutdown the client.
                         if (strcmp(payload, SHUTDOWN_MESSAGE) == 0) {
+                            // Print a final newline.
+                            printf("\n");
                             break;
                         }
                         printf("%s\n", payload);

@@ -93,6 +93,7 @@ void clear_element(cont_node* head) {
 void clear_map(hash_map* map) {
     for (int i = 0; i < BUCKETS; i++) {
         clear_element(map->buckets[i]);
+        map->buckets[i] = NULL;
     }
     map->size = 0;
 }

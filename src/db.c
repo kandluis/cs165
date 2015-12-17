@@ -17,7 +17,7 @@ status create_db(const char* db_name, db** db) {
 
     if (*db == NULL) {
         int attempts = 0;
-        while (!(*db = malloc(sizeof(struct db))) && attempts < MAX_ATTEMPTS) {
+        while (!(*db = calloc(1, sizeof(struct db))) && attempts < MAX_ATTEMPTS) {
           log_info("Database %s creation failed. Attempt %i.\n", db_name, attempts);
           attempts++;
         }
@@ -45,7 +45,7 @@ status create_db(const char* db_name, db** db) {
 // Metadata is a file ponter to the metadata file.
 status load_table(FILE* metadata, table* tbl) {
     // Allocate space for the columns
-    tbl->col = malloc(sizeof(struct column*) * tbl->table_size);
+    tbl->col = calloc(1, sizeof(struct column*) * tbl->table_size);
 
     char buffer[DEFAULT_ARRAY_SIZE];
 
@@ -53,7 +53,7 @@ status load_table(FILE* metadata, table* tbl) {
     FILE* fp;
     status ret;
     for(size_t i = 0; i < tbl->table_size; i++) {
-        column* col = malloc(sizeof(struct column));
+        column* col = calloc(1, sizeof(struct column));
         if (fscanf(metadata,
             (i < tbl->table_size - 1) ? " %s %zu " : " %s %zu\n",
             buffer, &col->count) != 2) {
@@ -66,7 +66,7 @@ status load_table(FILE* metadata, table* tbl) {
         col->name = copystr(buffer);
 
         // Read in the data!
-        col->data = malloc(sizeof(int) * col->size);
+        col->data = calloc(col->size, sizeof(Data));
         sprintf(buffer, "%s/%s.data", DATA_FOLDER, col->name);
         fp = fopen(buffer, "rb");
         if (!fp) {
@@ -75,7 +75,7 @@ status load_table(FILE* metadata, table* tbl) {
             ret.error_message = "Could not open columnar file.\n";
             return ret;
         }
-        if (col->count != fread(col->data, sizeof(int), col->count, fp)) {
+        if (col->count != fread(col->data, sizeof(Data), col->count, fp)) {
             log_err("Could not read columnar file data %s.\n", buffer);
             ret.code = ERROR;
             ret.error_message = "Could not read data.\n";
@@ -114,7 +114,7 @@ status open_db(const char* filename, db** db, OpenFlags flags)
     }
 
     // Allocate space for the tables
-    (*db)->tables = malloc(sizeof(struct table*) * (*db)->table_count);
+    (*db)->tables = calloc((*db)->table_count, sizeof(struct table*));
     if (!(*db)->tables) {
         ret.error_message = "Could not allocate space.\n";
         ret.code = ERROR;
@@ -125,7 +125,7 @@ status open_db(const char* filename, db** db, OpenFlags flags)
     // Iterate over the tables and load each one
     char buffer[DEFAULT_ARRAY_SIZE];
     for(size_t i = 0; i < (*db)->table_count; i++) {
-        table* tbl = malloc(sizeof(struct table));
+        table* tbl = calloc(1, sizeof(struct table));
 
         // Read in the table name and column count
         if (fscanf(mfile,
@@ -181,7 +181,7 @@ status sync_table(table* tbl){
             log_err("Could not open %s\n", fname);
             return s;
         }
-        if (tbl->col[i]->count != fwrite(tbl->col[i]->data, sizeof(int), tbl->col[i]->count, data)) {
+        if (tbl->col[i]->count != fwrite(tbl->col[i]->data, sizeof(Data), tbl->col[i]->count, data)) {
             s.code = ERROR;
             s.error_message = "Could not write data to file!";
             log_err("Could not write data to file!");
@@ -255,7 +255,7 @@ status create_table(db* db, const char* name, size_t num_columns, table** table)
 
     // Need to allocate space for the table.
     if (*table == NULL) {
-        *table = malloc(sizeof(struct table));
+        *table = calloc(1, sizeof(struct table));
         if (!(*table)) {
             log_err("Table %s creation failed! %s: error at line %d\n",
                 name, __func__, __LINE__);
@@ -272,7 +272,7 @@ status create_table(db* db, const char* name, size_t num_columns, table** table)
         // Had no tables.
         if (oldsize == 0) {
             assert(newsize > 0);
-            db->tables = malloc(sizeof(char) * newsize);
+            db->tables = calloc(newsize, sizeof(char));
         }
         // Have tables, need to resize.
         else {
@@ -299,7 +299,7 @@ status create_table(db* db, const char* name, size_t num_columns, table** table)
     // Populate table.
     (*table)->name = copystr(name);
     (*table)->col_count = 0;
-    (*table)->col = malloc(sizeof(struct column*) * num_columns);
+    (*table)->col = calloc(num_columns, sizeof(struct column*));
     (*table)->length = 0;
     (*table)->table_size = num_columns;
 
@@ -324,7 +324,7 @@ status create_column(table* table, const char* name, column** col)
     status s;
     if (*col == NULL) {
         // Allocate space for the column!
-        *col = malloc(sizeof(struct column));
+        *col = calloc(1, sizeof(struct column));
         if (!(*col)) {
             log_err("Column %s creation failed! %s: error at line %d\n",
                     name, __func__, __LINE__);
@@ -342,7 +342,7 @@ status create_column(table* table, const char* name, column** col)
         // Had no columns.
         if (oldsize == 0) {
             assert(newsize > 0);
-            table->col = malloc(sizeof(char) * newsize);
+            table->col = calloc(newsize, sizeof(char));
         }
         // Have tables, need to resize.
         else {
@@ -369,7 +369,7 @@ status create_column(table* table, const char* name, column** col)
     (*col)->name = copystr(name);
     (*col)->size = 0;
     (*col)->count = 0;
-    (*col)->average = NULL;
+    (*col)->type = INT;
 
     // TODO (data, index)
     (*col)->data = NULL;
@@ -395,7 +395,7 @@ status insert(column* col, int data)
         size_t newcount = 2 * col->count + 1;
         if (newcount == 1) {
             newcount = DEFAULT_ARRAY_SIZE;
-            col->data = malloc(sizeof(int) * newcount);
+            col->data = calloc(sizeof(Data), newcount);
             if (!col->data) {
                 ret.code = ERROR;
                 ret.error_message = "Failed allocating space for data";
@@ -404,8 +404,8 @@ status insert(column* col, int data)
             }
         }
         else {
-            size_t newsize = newcount * sizeof(int);
-            size_t oldsize = col->count * sizeof(int);
+            size_t newsize = newcount * sizeof(Data);
+            size_t oldsize = col->count * sizeof(Data);
             void* tmp = resize(col->data, oldsize, newsize);
             free(col->data);
             col->data = tmp;
@@ -416,7 +416,7 @@ status insert(column* col, int data)
     }
 
     // Set the value into the column
-    col->data[col->count++] = data;
+    col->data[col->count++].i = data;
     ret.code = OK;
 
     return ret;
@@ -495,7 +495,7 @@ int check(comparator* f, int value){
 status fetch(column* col, column* pos,  result** r){
     status ret;
     if (!(*r)){
-        *r = malloc(sizeof(struct result));
+        *r = calloc(1, sizeof(struct result));
         if (!(*r)) {
             log_err("Low on memory! Could not allocate more space.");
             ret.code = ERROR;
@@ -505,12 +505,12 @@ status fetch(column* col, column* pos,  result** r){
     }
 
     // Allocate space for result
-    (*r)->payload = malloc(pos->size * sizeof(int));
+    (*r)->payload = calloc(pos->size, sizeof(Data));
     (*r)->num_tuples = pos->size;
 
     // Copy out to the results
     for (size_t i = 0; i < pos->size; i++) {
-        (*r)->payload[i] = col->data[pos->data[i]];
+        (*r)->payload[i] = col->data[pos->data[i].i];
     }
 
     ret.code = OK;
@@ -528,18 +528,18 @@ status col_scan(comparator* f, column* col, result** r)
         return ret;
     }
 
-    int* pos = (*r)->payload;
+    Data* pos = (*r)->payload;
     size_t size = (*r)->num_tuples;
     size_t res_pos = 0;
 
     // We override with a new array because this data will be saved too!
-    (*r)->payload = calloc(size, sizeof(int));
+    (*r)->payload = calloc(size, sizeof(Data));
 
     // This is a full column scan.
     if (!pos){
         for(size_t i = 0; i < col->count; i++) {
-            if (check(f, col->data[i])) {
-                (*r)->payload[res_pos++] = i;
+            if (check(f, col->data[i].i)) {
+                (*r)->payload[res_pos++].i = i;
             }
         }
         // Now we have a new result stored in r.
@@ -549,11 +549,11 @@ status col_scan(comparator* f, column* col, result** r)
     // We use the pos indicated in the res.
     else {
         for(size_t ii = 0; ii < (*r)->num_tuples; ii++) {
-            if (check(f, col->data[pos[ii]])) {
+            if (check(f, col->data[pos[ii].i].i)) {
                 (*r)->payload[res_pos++] = pos[ii];
             }
-        (*r)->num_tuples = res_pos;
         }
+        (*r)->num_tuples = res_pos;
     }
 
     ret.code = OK;

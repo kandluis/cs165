@@ -33,7 +33,8 @@ SOFTWARE.
  **/
 typedef enum DataType {
      INT,
-     LONG,
+     LONGINT,
+     DOUBLE,
      // Others??
 } DataType;
 
@@ -79,13 +80,19 @@ typedef struct column_index {
  * columns in a table should share the same length. Instead, this is
  * tracked in the table (length).
  **/
+ typedef union Data {
+    int i;
+    double f;
+    long int li;
+ } Data;
+
 typedef struct column {
     const char* name;
-    int* data;
+    Data* data;
     size_t size;
     size_t count;
     column_index* index;
-    double* average;    // Overload it to store the average. Needs to be taken care of.
+    DataType type;  // Stores the type of the column
 } column;
 
 /**
@@ -202,7 +209,8 @@ typedef struct comparator {
 
 typedef struct result {
     size_t num_tuples;
-    int* payload;
+    Data* payload;
+    DataType type;
 } result;
 
 typedef enum Aggr {
@@ -268,14 +276,19 @@ typedef struct db_operator {
     column** columns;
 
     // Internmediaties used for PROJECT, DELETE, HASH_JOIN
-    int* pos1;
+    Data* pos1;
+    DataType pos1type;
+
     // Needed for HASH_JOIN
-    int* pos2;
+    Data* pos2;
+    DataType pos2type;
 
     // For insert/delete operations, we only use value1;
     // For update operations, we update value1 -> value2;
-    int* value1;
-    int* value2;
+    Data* value1;
+    DataType value1type;
+    Data* value2;
+    DataType value2type;
 
     // This includes several possible fields that may be used in the operation.
     Aggr agg;
