@@ -39,7 +39,8 @@ typedef enum DSLGroup {
     VECTOR_OPERATION,
     TUPLE,
     SHUTDOWNCOMMAND,
-    LOADCOMMAND
+    LOADCOMMAND,
+    CREATE_INDEX,
     // TODO(USER): Add more here...
 } DSLGroup;
 

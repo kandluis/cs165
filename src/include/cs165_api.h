@@ -424,6 +424,14 @@ status create_column(table *table, const char* name, column** col);
  **/
 status create_index(column* col, IndexType type);
 
+
+/**
+ * cluster_table(tbl);
+ * Clusters the table based on the cluster column, if specified.
+ * Tables without a cluster_column are already considered clustered.
+**/
+status cluster_table(table* tbl);
+
 status insert(column *col, Data data);
 status insert_pos(column* col, size_t pos, Data data);
 status delete(column *col, int *pos);

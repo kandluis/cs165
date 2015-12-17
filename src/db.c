@@ -79,6 +79,7 @@ status load_table(FILE* metadata, table* tbl) {
             log_err("Could not read columnar file data %s.\n", buffer);
             ret.code = ERROR;
             ret.error_message = "Could not read data.\n";
+            fclose(fp);
             return ret;
         }
 
@@ -144,6 +145,7 @@ status open_db(const char* filename, db** db, OpenFlags flags)
         status s = load_table(mfile, tbl);
         if (s.code != OK) {
             fclose(mfile);
+            free(tbl);
             return s;
         }
 
@@ -185,6 +187,7 @@ status sync_table(table* tbl){
             s.code = ERROR;
             s.error_message = "Could not write data to file!";
             log_err("Could not write data to file!");
+            fclose(data);
             return s;
         }
 
@@ -200,6 +203,7 @@ status sync_table(table* tbl){
         }
         free(tbl->col[i]->index);
         free(tbl->col[i]);
+        fclose(data);
     }
 
     s.code = OK;
@@ -320,6 +324,7 @@ status create_table(db* db, const char* name, size_t num_columns, table** table)
     (*table)->col = calloc(num_columns, sizeof(struct column*));
     (*table)->length = 0;
     (*table)->table_size = num_columns;
+    (*table)->cluster_column = NULL;
 
     s.code = OK;
     return s;
@@ -405,6 +410,123 @@ status create_index(column* col, IndexType type)
     (void) col;
     (void) type;
     return global;
+}
+
+// Merges the subsections of the input data array.
+// start - the starting index of the left side
+// end - the final (not-inclusive) index of the right
+// mid - the starting index of the right.
+// Keeps track of swapping positions using pos, which is
+//      assumed to mirror A.
+// Assumes data contains integers.
+void merge(Data* A, Data* pos, int start, int mid, int end) {
+    // Assume that [start, mid] sorted and [mid + 1,end] sorted.
+    int i = start;
+    int j = mid + 1;
+    int k = 0;
+
+    // Allocate space to temporarily hold the results.
+    Data* tmp = malloc(sizeof(Data) * (end - start + 1));
+    Data* tpos = malloc(sizeof(Data) * (end - start + 1));
+    while (i <= mid && j <= end) {
+        if (A[i].i < A[j].i) {
+            tpos[k] = pos[i];
+            tmp[k++] = A[i++];
+        }
+        else {
+            tpos[k] = pos[j];
+            tmp[k++] = A[j++];
+        }
+    }
+
+    // Iterate over the i
+    while (i <= mid) {
+        tpos[k] = pos[i];
+        tmp[k++] = A[i++];
+    }
+
+    // Iterate over the j
+    while (j <= end) {
+        tpos[k] = pos[j];
+        tmp[k++] = A[j++];
+    }
+
+    // Now we copy the results back into A assuming the spaces are continguous.
+    while (--k >= 0) {
+        A[k] = tmp[k];
+        pos[k] = tpos[k];
+    }
+}
+
+// Recursive function to sort a column along with an array of positions.
+void mergesort(Data* A, Data* pos, int start, int end) {
+    // Array of length 1 is already sorted.
+    if (end - start + 1 < 2) {
+        return;
+    }
+
+    // Otherwise split in half.
+    int mid = end - (end - start) / 2;
+
+    // Mergesort each half
+    mergesort(A, pos, start, mid - 1);
+    mergesort(A, pos, mid, end);
+
+    // And merge the two
+    merge(A, pos, start, mid, end);
+}
+
+
+
+status cluster_table(table* tbl) {
+    status s;
+    if (!tbl) {
+        s.code = ERROR;
+        s.error_message = "Invalid table pointer!";
+        return s;
+    }
+
+    // A table with no clusters is already clustered
+    if (!tbl->cluster_column) {
+        s.code = OK;
+        return s;
+    }
+
+    // Now we need to cluster, so we first sort the cluster_column
+    column* pcol = tbl->cluster_column;
+    column* pos = malloc(sizeof(struct column));
+    pos->data = calloc(sizeof(Data), pcol->count);
+    pos->type = INT;
+    for (size_t i = 0; i < pcol->count; i++) {
+        pos->data[i].i = i;
+    }
+
+    // After this call, pos is sorted!
+    mergesort(pcol->data, pos->data, 0, pcol->count - 1);
+
+    // Now, for each column, we fetch based on positions.
+    column* column;
+    result* r = NULL;
+    for (size_t col = 0; col < tbl->col_count; col++) {
+        // Only the non-leading columns
+        column = tbl->col[col];
+        if (column != pcol) {
+            if (fetch(column, pos, &r).code != OK) {
+                log_err("Failed to sort column %s\n", column->name);
+            }
+
+            // The results are stored in r.
+            free(column->data);
+            column->data = r->payload;
+            free(r);
+            r = NULL;
+        }
+    }
+
+    free(pos);
+    s.code = OK;
+    return s;
+
 }
 
 // Inserts the given value into positions specified by pos.

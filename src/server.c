@@ -258,7 +258,37 @@ void load_data(int client_socket, message* recv_message){
             }
         }
     }
+
+    // Let's extract the table name.
+    char* str_cpy = malloc(strlen(cols[0]->name) + 1);
+    strncpy(str_cpy, cols[0]->name, strlen(cols[0]->name) + 1);
+
+    // Now we split on periods to extract table name db.tbl.col
+    strtok(str_cpy, ".");
+    char* tbl_name = strtok(NULL, ".");
+
+    // TOOD(luisperez): Do we really want to crash here?
+    if (strcmp(strtok(NULL, "."), cols[0]->name) != 0) {
+        log_err("%s does not match %s!\n", cols[0]->name);
+        free(cols);
+        free(str_cpy);
+        return;
+    }
+
+    // Get the table from resource pool
+    table* tbl = get_resource(tbl_name);
+    if (!tbl) {
+        log_err("Table %s not found. Could not cluster!\n", tbl_name);
+        free(cols);
+        free(str_cpy);
+        return;
+    }
+
+    // Let's cluster the table!
+    (void) cluster_table(tbl);
+
     free(cols);
+    free(str_cpy);
 }
 
 /**
@@ -418,6 +448,7 @@ void load_server(void) {
     size_t ndbs = 0;
     if (fscanf(mfile, "%zu\n", &ndbs) != 1) {
         log_err("Unable to read metadata file.");
+        fclose(mfile);
         return;
     }
 
@@ -427,6 +458,7 @@ void load_server(void) {
     databases.data = calloc(sizeof(struct db*), ndbs);
     if (!databases.data) {
         log_err("Unable to allocate space for persisted data!");
+        fclose(mfile);
         return;
     }
 

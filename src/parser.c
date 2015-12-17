@@ -278,6 +278,10 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                         }
                         col1->index->type = SORTED;
                         col1->index->index = (void*) col1->data;
+
+
+                        // The table is clustered on this column
+                        tbl1->cluster_column = col1;
                     }
                     set_resource(full_name, col1);
                 }
@@ -608,6 +612,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             ret.error_message = "Unsupported operation.\n";
             ret.code = ERROR;
             log_err(ret.error_message);
+            free(str_cpy);
+            free(res);
             return ret;
         }
 
@@ -692,6 +698,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             ret.error_message = "Unsupported operation.\n";
             ret.code = ERROR;
             log_err(ret.error_message);
+            free(str_cpy);
+            free(res);
             return ret;
         }
 
@@ -721,6 +729,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         set_var(pos_str, col);
 
         ret.code = OK;
+        free(str_cpy);
         return ret;
     }
 
@@ -870,6 +879,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             ret.code = ERROR;
             log_err(ret.error_message);
             free(str_cpy);
+            free(res);
             return ret;
         }
 
@@ -957,6 +967,10 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         ret.code = OK;
 
         return ret;
+    }
+    else if (d->g == CREATE_INDEX) {
+        status ret;
+
     }
     else if (d->g == LOADCOMMAND) {
         // Need to stream data from the client to the server and insert it!

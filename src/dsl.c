@@ -13,6 +13,9 @@ const char* create_col_command_sorted = "^create\\(col\\,\\\"[a-zA-Z0-9_\\.]+\\\
 // Matches: create(col, <col_name>, <tbl_var>, unsorted);
 const char* create_col_command_unsorted = "^create\\(col\\,\\\"[a-zA-Z0-9_\\.]+\\\"\\,[a-zA-Z0-9_\\.]+\\,unsorted)";
 
+// Matches: create(idx, <col_name>, <type>)
+const char* create_index_command = "^create\\(idx\\,[a-zA-Z0-9_\\.]+,(btree|sorted)\\)";
+
 // Matches: relational_insert(<tbl_var>,[INT1],[INT2],...);
 // const char* relational_insert_command = "^relational_insert\\([a-zA-Z0-9_\\.]+\\,([0-9]+\\,)+[0-9]+\\)";
 const char* relational_insert_command = "^relational_insert";
@@ -101,6 +104,9 @@ dsl** dsl_commands_init(void)
 
     commands[14]->c = load_command;
     commands[14]->g = LOADCOMMAND;
+
+    commands[15]->c = create_index_command;
+    commands[15]->g = CREATE_INDEX;
 
     return commands;
 }
