@@ -752,7 +752,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Find the average
-        long double sum = 0.;
+        long int sum = 0.;
         if (vec_val->type == LONGINT) {
             for (size_t i = 0; i < vec_val->count; i++) {
                 sum += vec_val->data[i].li;
@@ -779,13 +779,13 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             return ret;
 
         }
-        double* res = calloc(1, sizeof(double));
-        *res = sum / ((long double) vec_val->count);
+        Data* res = calloc(1, sizeof(Data));
+        res->f = (double) sum / ((double) vec_val->count);
 
         // Size of vector is 1
         column* col = calloc(1, sizeof(struct column));
         // TODO: Figure out how to deal with these!
-        col->data = (Data*) res;
+        col->data = res;
         col->type = DOUBLE;
         col->size = 1;
         col->count = 1;

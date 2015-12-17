@@ -456,6 +456,8 @@ void load_server(void) {
         // Store it in our variable storage
         set_resource(db->name, db);
     }
+
+    log_info("Successfully loaded persisted data!");
 }
 
 // Currently this main will setup the socket and accept a single client.

@@ -583,7 +583,7 @@ status col_scan(comparator* f, column* col, result** r)
     // We use the pos indicated in the res.
     else {
         for(size_t ii = 0; ii < (*r)->num_tuples; ii++) {
-            if (check(f, col->data[pos[ii].li].i)) {
+            if (check(f, col->data[pos[ii].i].i)) {
                 (*r)->payload[res_pos++] = pos[ii];
             }
         }
