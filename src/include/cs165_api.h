@@ -28,7 +28,7 @@ SOFTWARE.
  * DataType
  * Flag to mark what type of data is held in the struct.
  * You can support additional types by including this enum and using void*
- * in place of int64_t* in db_operator simliar to the way IndexType supports
+ * in place of int* in db_operator simliar to the way IndexType supports
  * additional types.
  **/
 /**
@@ -83,7 +83,7 @@ typedef struct column_index {
  **/
 typedef struct column {
     const char* name;
-    int64_t* data;
+    int* data;
     size_t size;
     size_t count;
     column_index* index;
@@ -125,6 +125,17 @@ typedef struct db {
     size_t tables_available;
     table** tables;
 } db;
+
+/**
+ * Resource storage. It's just an array of database pointers that helps use
+ * persist the data later! We load it up when we start the server.
+**/
+ typedef struct Storage {
+    db** data;
+    size_t size;
+    size_t count;
+ } Storage;
+
 
 /**
  * Error codes used to indicate the outcome of an API call
@@ -192,7 +203,7 @@ typedef struct comparator {
 
 typedef struct result {
     size_t num_tuples;
-    int64_t* payload;
+    int* payload;
 } result;
 
 typedef enum Aggr {
@@ -213,6 +224,7 @@ typedef enum OperatorType {
     AGGREGATE,
     PRINT,
     LOADFILE,
+    SHUTDOWN,
     NOTAVAILABLE
 } OperatorType;
 
@@ -257,14 +269,14 @@ typedef struct db_operator {
     column** columns;
 
     // Internmediaties used for PROJECT, DELETE, HASH_JOIN
-    int64_t* pos1;
+    int* pos1;
     // Needed for HASH_JOIN
-    int64_t* pos2;
+    int* pos2;
 
     // For insert/delete operations, we only use value1;
     // For update operations, we update value1 -> value2;
-    int64_t* value1;
-    int64_t* value2;
+    int* value1;
+    int* value2;
 
     // This includes several possible fields that may be used in the operation.
     Aggr agg;
@@ -399,9 +411,9 @@ status create_column(table *table, const char* name, column** col);
  **/
 status create_index(column* col, IndexType type);
 
-status insert(column *col, int64_t data);
-status delete(column *col, int64_t *pos);
-status update(column *col, int64_t *pos, int64_t new_val);
+status insert(column *col, int data);
+status delete(column *col, int *pos);
+status update(column *col, int *pos, int new_val);
 status fetch(column *col, column *pos, result **r);
 status col_scan(comparator *f, column *col, result **r);
 status index_scan(comparator *f, column *col, result **r);

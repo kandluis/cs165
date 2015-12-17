@@ -3,7 +3,9 @@
 #include <assert.h>
 
 #include "db.h"
+#include "include/common.h"
 #include "include/utils.h"
+#include "include/var_store.h"
 
 status global;
 
@@ -38,12 +40,126 @@ status create_db(const char* db_name, db** db) {
     return s;
 }
 
+// Loads the data belong to tbl into table. tbl must have all parameters set
+// except the columns, which are loaded here.
+// Metadata is a file ponter to the metadata file.
+status load_table(FILE* metadata, table* tbl) {
+    // Allocate space for the columns
+    tbl->col = malloc(sizeof(struct column*) * tbl->table_size);
+
+    char buffer[DEFAULT_ARRAY_SIZE];
+
+    // Read in each column.
+    FILE* fp;
+    status ret;
+    for(size_t i = 0; i < tbl->table_size; i++) {
+        column* col = malloc(sizeof(struct column));
+        if (fscanf(metadata,
+            (i < tbl->table_size - 1) ? " %s %zu " : " %s %zu\n",
+            buffer, &col->count) != 2) {
+            log_err("Could not read from metadata file for column loading");
+            ret.code = ERROR;
+            ret.error_message = "Could read file.\n";
+            return ret;
+        }
+        col->size = col->count;
+        col->name = copystr(buffer);
+
+        // Read in the data!
+        col->data = malloc(sizeof(int) * col->size);
+        sprintf(buffer, "%s/%s.data", DATA_FOLDER, col->name);
+        fp = fopen(buffer, "rb");
+        if (!fp) {
+            log_err("Could not open columnar file %s.", buffer);
+            ret.code = ERROR;
+            ret.error_message = "Could not open columnar file.\n";
+            return ret;
+        }
+        if (col->count != fread(col->data, sizeof(int), col->count, fp)) {
+            log_err("Could not read columnar file data %s.\n", buffer);
+            ret.code = ERROR;
+            ret.error_message = "Could not read data.\n";
+            return ret;
+        }
+
+        // Add the column to the variable pool
+        set_resource(col->name, col);
+
+        // Add column to the table
+        tbl->col[i] = col;
+
+        fclose(fp);
+    }
+
+
+    ret.code = OK;
+    return ret;
+}
+
 status open_db(const char* filename, db** db, OpenFlags flags)
 {
-    (void) filename;
-    (void) db;
-    (void) flags;
-    return global;
+    status ret;
+    if (flags == CREATE || !db) {
+        ret.error_message = "CREATE flag not supported.\n";
+        ret.code = ERROR;
+        return ret;
+    }
+
+    // Open the file with the data
+    FILE* mfile = fopen(filename, "r");
+    if (!mfile) {
+        ret.error_message = "Open failed.\n";
+        ret.code = ERROR;
+        return ret;
+    }
+
+    // Allocate space for the tables
+    (*db)->tables = malloc(sizeof(struct table*) * (*db)->table_count);
+    if (!(*db)->tables) {
+        ret.error_message = "Could not allocate space.\n";
+        ret.code = ERROR;
+        fclose(mfile);
+        return ret;
+    }
+
+    // Iterate over the tables and load each one
+    char buffer[DEFAULT_ARRAY_SIZE];
+    for(size_t i = 0; i < (*db)->table_count; i++) {
+        table* tbl = malloc(sizeof(struct table));
+
+        // Read in the table name and column count
+        if (fscanf(mfile,
+            (i < (*db)->table_count - 1) ? " %s %zu " : " %s %zu\n",
+            buffer, &tbl->col_count) != 2) {
+            ret.code = ERROR;
+            ret.error_message = "Could not read metadata.";
+            log_err(ret.error_message);
+            fclose(mfile);
+            return ret;
+        }
+        tbl->table_size = tbl->col_count;
+        tbl->name = copystr(buffer);
+
+        // Read the rest of the line for this table!
+        status s = load_table(mfile, tbl);
+        if (s.code != OK) {
+            fclose(mfile);
+            return s;
+        }
+
+        tbl->length = 0;  // unused
+
+        // Add the table to the variable pool
+        set_resource(tbl->name, tbl);
+
+        // Add the table to the database
+        (*db)->tables[i] = tbl;
+    }
+
+    fclose(mfile);
+
+    ret.code = OK;
+    return ret;
 }
 
 status drop_db(db* db)
@@ -57,7 +173,7 @@ status sync_table(table* tbl){
     char fname[DEFAULT_ARRAY_SIZE];
     status s;
     for (size_t i = 0; i < tbl->col_count; i++) {
-        sprintf(fname, "%s.data", tbl->col[i]->name);
+        sprintf(fname, "%s/%s.data", DATA_FOLDER, tbl->col[i]->name);
         FILE* data = fopen(fname, "wb");
         if (!data) {
             s.code = ERROR;
@@ -65,7 +181,7 @@ status sync_table(table* tbl){
             log_err("Could not open %s\n", fname);
             return s;
         }
-        if (tbl->col[i]->count != fwrite(tbl->col[i]->data, sizeof(int64_t), tbl->col[i]->count, data)) {
+        if (tbl->col[i]->count != fwrite(tbl->col[i]->data, sizeof(int), tbl->col[i]->count, data)) {
             s.code = ERROR;
             s.error_message = "Could not write data to file!";
             log_err("Could not write data to file!");
@@ -81,7 +197,7 @@ status sync_db(db* db) {
     // We need to create a metadata file with the information in the database
     char fname[DEFAULT_ARRAY_SIZE];
     status s;
-    sprintf(fname, "%s.meta", db->name);
+    sprintf(fname, "%s/%s.meta", DATA_FOLDER, db->name);
     FILE* mfile = fopen(fname, "w");
     if (!mfile) {
         s.code = ERROR;
@@ -92,7 +208,7 @@ status sync_db(db* db) {
 
     // Iterate over the tables!
     for (size_t i = 0; i < db->table_count; i++){
-        if (fprintf(mfile, "%s,%zd,", db->tables[i]->name, db->tables[i]->col_count) < 0) {
+        if (fprintf(mfile, "%s %zu ", db->tables[i]->name, db->tables[i]->col_count) < 0) {
             log_err("Unable write to file %s\n", fname);
             s.code = ERROR;
             s.error_message = "Unable to write to file";
@@ -101,7 +217,7 @@ status sync_db(db* db) {
         }
         // Write out the column names for the table
         for(size_t j = 0; j < db->tables[i]->col_count - 1; j++) {
-            if (fprintf(mfile, "%s,%zd,", db->tables[i]->col[j]->name,
+            if (fprintf(mfile, "%s %zu ", db->tables[i]->col[j]->name,
                 db->tables[i]->col[j]->count) < 0) {
                 log_err("Unable to write to file %s\n", fname);
                 s.code = ERROR;
@@ -110,8 +226,8 @@ status sync_db(db* db) {
                 return s;
             }
         }
-        // Last one is writtne with a newline
-        if (fprintf(mfile, "%s,%zd\n",
+        // Last one is written with a newline
+        if (fprintf(mfile, "%s %zu\n",
             db->tables[i]->col[db->tables[i]->col_count - 1]->name,
             db->tables[i]->col[db->tables[i]->col_count - 1]->count) < 0) {
             log_err("Unable to write to file %s\n", fname);
@@ -269,7 +385,7 @@ status create_index(column* col, IndexType type)
     return global;
 }
 
-status insert(column* col, int64_t data)
+status insert(column* col, int data)
 {
     // Check the data size in case we need to resize
     status ret;
@@ -278,7 +394,7 @@ status insert(column* col, int64_t data)
         size_t newcount = 2 * col->count + 1;
         if (newcount == 1) {
             newcount = DEFAULT_ARRAY_SIZE;
-            col->data = malloc(sizeof(int64_t) * newcount);
+            col->data = malloc(sizeof(int) * newcount);
             if (!col->data) {
                 ret.code = ERROR;
                 ret.error_message = "Failed allocating space for data";
@@ -287,8 +403,8 @@ status insert(column* col, int64_t data)
             }
         }
         else {
-            size_t newsize = newcount * sizeof(int64_t);
-            size_t oldsize = col->count * sizeof(int64_t);
+            size_t newsize = newcount * sizeof(int);
+            size_t oldsize = col->count * sizeof(int);
             void* tmp = resize(col->data, oldsize, newsize);
             free(col->data);
             col->data = tmp;
@@ -304,13 +420,13 @@ status insert(column* col, int64_t data)
 
     return ret;
 }
-status delete(column* col, int64_t* pos)
+status delete(column* col, int* pos)
 {
     (void) col;
     (void) pos;
     return global;
 }
-status update(column* col, int64_t* pos, int64_t new_val)
+status update(column* col, int* pos, int new_val)
 {
     (void) col;
     (void) pos;
@@ -319,7 +435,7 @@ status update(column* col, int64_t* pos, int64_t new_val)
 }
 
 
-int check(comparator* f, int64_t value){
+int check(comparator* f, int value){
     comparator* cur = f;
     int success = 1; // 1 is True
     Junction mode = AND; // Start with True && ...
@@ -388,7 +504,7 @@ status fetch(column* col, column* pos,  result** r){
     }
 
     // Allocate space for result
-    (*r)->payload = malloc(pos->size * sizeof(int64_t));
+    (*r)->payload = malloc(pos->size * sizeof(int));
     (*r)->num_tuples = pos->size;
 
     // Copy out to the results
@@ -411,12 +527,12 @@ status col_scan(comparator* f, column* col, result** r)
         return ret;
     }
 
-    int64_t* pos = (*r)->payload;
+    int* pos = (*r)->payload;
     size_t size = (*r)->num_tuples;
     size_t res_pos = 0;
 
     // We override with a new array because this data will be saved too!
-    (*r)->payload = calloc(size, sizeof(int64_t));
+    (*r)->payload = calloc(size, sizeof(int));
 
     // This is a full column scan.
     if (!pos){

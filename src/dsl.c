@@ -18,10 +18,10 @@ const char* create_col_command_unsorted = "^create\\(col\\,\\\"[a-zA-Z0-9_\\.]+\
 const char* relational_insert_command = "^relational_insert";
 
 // Matches: select from column
-const char* select_column_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,([0-9]+|null)\\,([0-9]+|null)\\)";
+const char* select_column_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,((-?[0-9]+)|null)\\,((-?[0-9]+)|null)\\)";
 
 // Matches: select from positions in column
-const char* select_pos_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\,([0-9]+|null)\\,([0-9]+|null)\\)";
+const char* select_pos_command = "^[a-zA-Z0-9_\\.]+\\=select\\([a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\,((-?[0-9]+)|null)\\,((-?[0-9]+)|null)\\)";
 
 // Matches: fetch for fetching values from a column
 const char* fetch_commad = "^[a-zA-Z0-9_\\.]+\\=fetch\\([a-zA-Z0-9_\\.]+\\,[a-zA-Z0-9_\\.]+\\)";
@@ -97,7 +97,7 @@ dsl** dsl_commands_init(void)
     commands[12]->g = TUPLE;
 
     commands[13]->c = shutdown_command;
-    commands[13]->g = SHUTDOWN;
+    commands[13]->g = SHUTDOWNCOMMAND;
 
     commands[14]->c = load_command;
     commands[14]->g = LOADCOMMAND;

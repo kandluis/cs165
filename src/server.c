@@ -34,6 +34,13 @@
 // Here, we allow for a global of DSL COMMANDS to be shared in the program
 dsl** dsl_commands;
 
+
+// Here, we allow for a global databases to be shared in the program
+Storage databases;
+
+// Here we allow for tracking changes.
+int changed;
+
 /**
  * parse_command takes as input the send_message from the client and then
  * parses it into the appropriate query. Stores into send_message the
@@ -122,28 +129,93 @@ char* execute_db_operator(db_operator* query) {
 
         // Need to construct a string with the result
         size_t rows = query->columns[0]->count;
-        int64_t ncols = *query->pos1;
+        int ncols = *query->pos1;
 
         // We allocate space for the result based on upper bound estimate.
         // TODO(luisperez): Dynamically resize to avoid buffer overflow problems!
-        char* res = malloc(sizeof(char) * ((10 * ncols) + 1) * rows);
+        char* res = malloc(sizeof(char) * (1 + ((MAX_STRING_LENGTH * ncols) + 1) * rows));
         res[0] = '\0';
         ret = res; // Keep track of the start.
         for(size_t row = 0; row < rows; row++) {
-            for (int64_t col = 0; col < ncols - 1; col++) {
+            for (int col = 0; col < ncols - 1; col++) {
                 // Generate the string to hold a single digit
-                res += sprintf(res, "%ld,", query->columns[col]->data[row]);
+                res += sprintf(res, "%d,", query->columns[col]->data[row]);
             }
-            // For the last digit, don't add comma instead add a newline
-            res +=  sprintf(res, "%ld\n", query->columns[ncols - 1]->data[row]);
+            // For the last digit, don't add comma
+            res += sprintf(res, "%d", query->columns[ncols - 1]->data[row]);
         }
 
         // NEED TO FREE COLS AND POS1
         free(query->columns);
         free(query->pos1);
     }
+    else if (query->type == SHUTDOWN) {
+        // We send a special message to the client to shutdown gracefully!
+        ret = SHUTDOWN_MESSAGE;
+    }
     free(query);
     return ret;
+}
+
+// Load command executed, so synchronize with client and read incoming messages.
+void load_data(int client_socket, message* recv_message){
+    // Read the first line of the file (foo.t1.a,foo.t1.b) and get columns
+    int length = recv(client_socket, recv_message, sizeof(struct message), 0);
+    if (length <= 0) {
+        log_err("Client connection closed!\n");
+    }
+
+    char buffer[recv_message->length];
+    length = recv(client_socket, buffer, recv_message->length, 0);
+    buffer[recv_message->length] = '\0';
+
+    // Read the rest of the input line by line until payload TERMINATES.
+    // First, let's count how many columns we have
+    int ncol = 1;
+    int i = 0;
+    while (buffer[i] != '\0') {
+        if (buffer[i] == ',') {
+            ncol++;
+        }
+        i++;
+    }
+
+    // Now we can parse each col.
+    column** cols = malloc(sizeof(struct column*) * ncol);
+    cols[0] = get_resource(strtok(buffer, ","));
+    if (!cols[0]) {
+        log_err("Resource not found. Column name invalid: %s.", buffer);
+    }
+    for (int i = 1; i < ncol; i++) {
+        cols[i] = get_resource(strtok(NULL, ","));
+        if (!cols[i]) {
+            log_err("Resource not found.");
+        }
+    }
+
+    // Now we read line by line and insert into the database
+    while(recv(client_socket, recv_message, sizeof(message), 0) > 0) {
+        recv(client_socket, buffer, recv_message->length, 0);
+        buffer[recv_message->length] = '\0';
+
+        // Break out of loop if we received the EOF message
+        if (strcmp(buffer, TERMINATE_LOAD) == 0) {
+            log_info("Received termination signal from client. Load completed.");
+            break;
+        }
+        // Insert into respective columns
+        char* str = NULL;
+        for (int i = 0; i < ncol; i++){
+            str = strtok((i == 0) ? buffer : NULL, ",");
+            if (!str) {
+                log_err("Could not parse. Error in load.\n", buffer);
+            }
+            status s = insert(cols[i], atoi(str));
+            if (s.code != OK) {
+                log_err("Could not insert value %s into column during load.", str);
+            }
+        }
+    }
 }
 
 /**
@@ -151,7 +223,10 @@ char* execute_db_operator(db_operator* query) {
  * This is the execution routine after a client has connected.
  * It will continually listen for messages from the client and execute queries.
  **/
-void handle_client(int client_socket) {
+ // Returns -1 on client error.
+ // Returns 0 on successful handling
+ // Returns 1 on shutdown.
+int handle_client(int client_socket) {
     int done = 0;
     int length = 0;
 
@@ -170,11 +245,13 @@ void handle_client(int client_socket) {
     // 2. Handle request if appropriate
     // 3. Send status of the received message (OK, UNKNOWN_QUERY, etc)
     // 4. Send response of request.
+    int ret = 0;
     do {
         length = recv(client_socket, &recv_message, sizeof(message), 0);
         if (length < 0) {
             log_err("Client connection closed!\n");
-            exit(1);
+            ret = -1;
+            break;
         } else if (length == 0) {
             done = 1;
         }
@@ -188,61 +265,10 @@ void handle_client(int client_socket) {
             // 1. Parse command
             db_operator* query = parse_command(&recv_message, &send_message);
 
-            // We have to special case LOAD!
-            if (query->type == LOADFILE) {
-                // Read the first line of the file (foo.t1.a,foo.t1.b) and get columns
-                length = recv(client_socket, &recv_message, sizeof(message), 0);
-                if (length <= 0) {
-                    log_err("Client connection closed!\n");
-                    exit(1);
-                }
-
-                char buffer[recv_message.length];
-                length = recv(client_socket, buffer, recv_message.length, 0);
-                buffer[recv_message.length] = '\0';
-
-                // Read the rest of the input line by line until payload TERMINATES.
-                // First, let's count how many columns we have
-                int64_t ncol = 1;
-                int64_t i = 0;
-                while (buffer[i] != '\0') {
-                    if (buffer[i] == ',') {
-                        ncol++;
-                    }
-                    i++;
-                }
-
-                // Now we can parse each col.
-                column** cols = malloc(sizeof(struct column*) * ncol);
-                cols[0] = get_var(strtok(buffer, ","));
-                for (int64_t i = 1; i < ncol; i++) {
-                    cols[i] = get_var(strtok(NULL, ","));
-                }
-
-                // Now we read line by line and insert into the database
-                while(recv(client_socket, &recv_message, sizeof(message), 0) > 0) {
-                    recv(client_socket, buffer, recv_message.length, 0);
-                    buffer[recv_message.length] = '\0';
-
-                    // Break out of loop if we received the EOF message
-                    if (strcmp(buffer, TERMINATE_LOAD) == 0) {
-                        log_info("Received termination signal from client. Load completed.");
-                        break;
-                    }
-                    // Insert into respective columns
-                    char* str = NULL;
-                    for (int64_t i = 0; i < ncol; i++){
-                        str = strtok((i == 0) ? buffer : NULL, ",");
-                        if (!str) {
-                            log_err("Could not parse. Error in load.\n", buffer);
-                        }
-                        status s = insert(cols[i], atoi(str));
-                        if (s.code != OK) {
-                            log_err("Could not insert value %s into column during load.", str);
-                        }
-                    }
-                }
-                /// Stuff
+            // We have to special case LOAD! We just do a lot of logging on errors!
+            if (query && query->type == LOADFILE) {
+                changed = 1;
+                load_data(client_socket, &recv_message);
             }
 
             // 2. Handle request
@@ -252,19 +278,33 @@ void handle_client(int client_socket) {
             // 3. Send status of the received message (OK, UNKNOWN_QUERY, etc)
             if (send(client_socket, &(send_message), sizeof(struct message), 0) == -1) {
                 log_err("Failed to send message.");
-                exit(1);
+                ret = -1;
+                break;
             }
 
             // 4. Send response of request
             if (send(client_socket, result, send_message.length, 0) == -1) {
                 log_err("Failed to send message.");
-                exit(1);
+                ret = -1;
+                break;
+            }
+
+            // If we sent a shutdown to the client, the server has persisted
+            // and needs to exit.
+            if (strcmp(result, SHUTDOWN_MESSAGE) == 0) {
+                log_info("Client requested server shutdown. Closing socket %d!\n", client_socket);
+                ret = 1;
+                break;
             }
         }
     } while (!done);
 
     log_info("Connection closed at socket %d!\n", client_socket);
     close(client_socket);
+
+    // Successfully closed connection to client with no errors and no requests
+    // to shutdown.
+    return ret;
 }
 
 /**
@@ -312,6 +352,63 @@ int setup_server() {
     return server_socket;
 }
 
+
+// Function to load the metadata file from the server.
+// Returns True/False depending on whether we successfully loaded the persisted data.
+void load_server(void) {
+    // Open the metadata system file
+    char tmp[DEFAULT_QUERY_BUFFER_SIZE];
+    sprintf(tmp, "%s/%s.meta", DATA_FOLDER, SYSTEM_META_FILE);
+    FILE* mfile = fopen(tmp, "r");
+    if (!mfile) {
+        log_info("No persisted data found.\n");
+        return;
+    }
+
+    // The first line tells us the number of databases
+    size_t ndbs = 0;
+    if (fscanf(mfile, "%zu\n", &ndbs) != 1) {
+        log_err("Unable to read metadata file.");
+        return;
+    }
+
+    // Allocate space for the databases
+    databases.count = ndbs;
+    databases.size = ndbs;
+    databases.data = malloc(sizeof(struct db*) * ndbs);
+    if (!databases.data) {
+        log_err("Unable to allocate space for persisted data!");
+        return;
+    }
+
+    // Read in each database!
+    for (size_t i = 0; i < ndbs; i++) {
+        db* db =  malloc(sizeof(struct db));
+        db->tables_available = 0;
+
+        // Store the name and table count
+        if (fscanf(mfile, "%s %zu\n", tmp, &db->table_count) != 2) {
+            log_err("Unable to read database metadata.");
+            return;
+        }
+        // Copy it to the database.
+        db->name = copystr(tmp);
+
+        sprintf(tmp, "%s/%s.meta", DATA_FOLDER, db->name);
+        status s = open_db(tmp, &db, LOAD);
+        if (s.code != OK) {
+            log_err("Unable to load db: %s\n", db->name);
+            return;
+        }
+
+        // Store the loaded db in the global pool
+        databases.data[i] = db;
+
+        // Store it in our variable storage
+        set_resource(db->name, db);
+    }
+}
+
 // Currently this main will setup the socket and accept a single client.
 // After handling the client, it will exit.
 // You will need to extend this to handle multiple concurrent clients
@@ -323,6 +420,12 @@ int main(void)
         exit(1);
     }
 
+    // No modification to the data have been made.
+    changed = 0;
+
+    // Load persisted data!
+    load_server();
+
     // Populate the global dsl commands
     dsl_commands = dsl_commands_init();
 
@@ -332,12 +435,28 @@ int main(void)
     socklen_t t = sizeof(remote);
     int client_socket = 0;
 
-    if ((client_socket = accept(server_socket, (struct sockaddr *)&remote, &t)) == -1) {
-        log_err("L%d: Failed to accept a new connection.\n", __LINE__);
-        exit(1);
-    }
+    // Continually accept clients.
+    while (1) {
+        if ((client_socket = accept(server_socket, (struct sockaddr *)&remote, &t)) == -1) {
+            log_err("L%d: Failed to accept a new connection.\n", __LINE__);
+            exit(1);
+        }
 
-    handle_client(client_socket);
+        // Shutdown of server requested.
+        int ret = handle_client(client_socket);
+        if (ret == 1) {
+            log_info("Shutdown!");
+            break;
+        }
+        else if (ret < 0) {
+            log_info("Client error.");
+            clear_vars();
+        }
+        else {
+            log_info("Client success.");
+            clear_vars();
+        }
+    }
 
     return 0;
 }

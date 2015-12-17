@@ -11,6 +11,7 @@
 #include <stdio.h>
 
 #define TERMINATE_LOAD "EOF"
+#define SHUTDOWN_MESSAGE "SHUTDOWN"
 
 
 

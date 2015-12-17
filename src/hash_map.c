@@ -10,7 +10,7 @@
 
 // The has function used by this particular implementation.
 // Source (http://stackoverflow.com/questions/7666509/hash-function-for-string)
-unsigned long hash_function(char* str)
+unsigned long hash_function(const char* str)
 {
     unsigned long hash = 5381;
     int c;
@@ -21,12 +21,12 @@ unsigned long hash_function(char* str)
 }
 
 // Adds an element to our modified linked list. Returns new head of list.
-cont_node* add_element(cont_node* head, char* key, void* value)
+cont_node* add_element(cont_node* head, const char* key, void* value)
 {
     // Check if current node is full or non-existent.
     cont_node* new_head = NULL;
-    if (!head) {
-        new_head = malloc(sizeof(cont_node));
+    if (!head || head->count == head->size) {
+        new_head = malloc(sizeof(struct cont_node));
         new_head->next = head;
         new_head->size = LINK_SIZE;
         new_head->count = 0;
@@ -41,7 +41,7 @@ cont_node* add_element(cont_node* head, char* key, void* value)
 }
 
 // Returns pointer to the key,value pair with key. Returns null if not found.
-kv_pair* find_element(cont_node* head, char* key)
+kv_pair* find_element(cont_node* head, const char* key)
 {
     // Empty.
     if (!head) {
@@ -59,7 +59,7 @@ kv_pair* find_element(cont_node* head, char* key)
     return find_element(head->next, key);
 }
 
-bool insert_into_map(hash_map* map, char* key, void* value)
+bool insert_into_map(hash_map* map, const char* key, void* value)
 {
     if (find_in_map(map, key)) {
         return false;
@@ -69,8 +69,30 @@ bool insert_into_map(hash_map* map, char* key, void* value)
     return true;
 }
 
-void* find_in_map(hash_map* map, char* key)
+void* find_in_map(hash_map* map, const char* key)
 {
     kv_pair* el = find_element(map->buckets[hash_function(key) % BUCKETS], key);
     return (el) ? el->value : el;
+}
+
+// Frees the linked list starting at head.
+void clear_element(cont_node* head) {
+    if (head) {
+        for (size_t i = 0; i < head->count; i++) {
+            free(head->link[i].key);
+            free(head->link[i].value);
+        }
+        head->count = 0;
+
+        clear_element(head->next);
+
+        free(head);
+    }
+}
+
+void clear_map(hash_map* map) {
+    for (int i = 0; i < BUCKETS; i++) {
+        clear_element(map->buckets[i]);
+    }
+    map->size = 0;
 }

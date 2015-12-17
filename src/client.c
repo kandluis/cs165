@@ -177,9 +177,14 @@ int main(void)
                     int num_bytes = (int) recv_message.length;
                     char payload[num_bytes + 1];
 
-                    // Receive the payload and print it out
+                    // Receive the payload and either print it out or shutdown.
                     if ((len = recv(client_socket, payload, num_bytes, 0)) > 0) {
                         payload[num_bytes] = '\0';
+
+                        // Server has requested that we shutdown the client.
+                        if (strcmp(payload, SHUTDOWN_MESSAGE) == 0) {
+                            break;
+                        }
                         printf("%s\n", payload);
                     }
                 }

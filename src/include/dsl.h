@@ -38,7 +38,7 @@ typedef enum DSLGroup {
     AVERAGE,
     VECTOR_OPERATION,
     TUPLE,
-    SHUTDOWN,
+    SHUTDOWNCOMMAND,
     LOADCOMMAND
     // TODO(USER): Add more here...
 } DSLGroup;

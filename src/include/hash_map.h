@@ -50,13 +50,18 @@ typedef struct hash_map {
 * Given a map and a key,value pair, associates the key with the value.
 * Returns true on success, false if they key is already present.
 **/
-bool insert_into_map(hash_map* map, char* key, void* value);
+bool insert_into_map(hash_map* map, const char* key, void* value);
 
 /**
 * Given a map and a key, returns a pointer to the associated value if found in
 * the hash_map. Returns null if not found.
 */
-void* find_in_map(hash_map* map, char* key);
+void* find_in_map(hash_map* map, const char* key);
+
+/**
+* Given  a map, attempts to clear it of all contents (also attempts to free memory therein)
+**/
+void clear_map(hash_map* map);
 
 
 #endif  // SRC_INCLUDE_HASH_MAP_H_

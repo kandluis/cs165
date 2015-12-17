@@ -3,14 +3,19 @@
 #include <regex.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "db.h"
+#include "include/common.h"
 #include "include/var_store.h"
 
-
 // Global column to store pointers to databases we've created/loaded etc.
-column databases;
+extern Storage databases;
 
+// Global variable to keep track of whether the system has changed.
+extern int changed;
 
 // TODO(luisperez): Are we supposed to return an error if the "thing" we are
 // creating already exists?
@@ -27,13 +32,13 @@ status parse_command_string(char* str, dsl** commands, db_operator* op)
 
     // Create a regular expression to parse the string
     regex_t regex;
-    int64_t ret;
+    int ret;
 
     // Track the number of matches; a string must match all
-    int64_t n_matches = 1;
+    int n_matches = 1;
     regmatch_t m;
 
-    for (int64_t i = 0; i < NUM_DSL_COMMANDS; ++i) {
+    for (int i = 0; i < NUM_DSL_COMMANDS; ++i) {
         dsl* d = commands[i];
         if (regcomp(&regex, d->c, REG_EXTENDED) != 0) {
             log_err("Could not compile regex\n");
@@ -72,6 +77,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
     op->type = NOTAVAILABLE;
 
     if (d->g == CREATE_DB) {
+        // Mark database as modified so we persist.
+        changed = 1;
+
         // Create a working copy, +1 for '\0'
         char* str_cpy = malloc(strlen(str) + 1);
         strncpy(str_cpy, str, strlen(str) + 1);
@@ -96,7 +104,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         // Here, we can create the DB using our parsed info!
         // First, we check to see if we've already created the db.
         status ret;
-        db* db1 = get_var(db_name);
+        db* db1 = get_resource(db_name);
         if (!db1) {
             status s = create_db(db_name, &db1);
             if (s.code != OK) {
@@ -106,13 +114,13 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                 ret.error_message = "Database creation failed.\n";
             }
             else {
-                set_var(db_name, db1);
+                set_resource(db_name, db1);
                 // Store in our global pointer
                 if (databases.count >= databases.size) {
                     // need to resize the array
                     databases.data = realloc(databases.data, (2 * databases.count + 1) * sizeof(struct db*));
                 }
-                databases.data[databases.count] = (int64_t) db1;
+                databases.data[databases.count++] = db1;
                 ret.code = OK;
             }
         }
@@ -129,6 +137,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
 
     } else if (d->g == CREATE_TABLE) {
+        // Mark database as modified so we persist.
+        changed = 1;
+
         // Create a working copy, +1 for '\0'
         char* str_cpy = malloc(strlen(str) + 1);
         strncpy(str_cpy, str, strlen(str) + 1);
@@ -156,7 +167,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // This gives us count
         char* count_str = strtok(NULL, comma);
-        int64_t count = 0;
+        int count = 0;
         if (count_str != NULL) {
             count = atoi(count_str);
         }
@@ -165,7 +176,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // Find database.
         status ret;
-        db* db1 = get_var(db_name);
+        db* db1 = get_resource(db_name);
         if (!db1) {
             log_err("No database found. %s: error at line: %d\n", __func__, __LINE__);
 
@@ -174,7 +185,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
         else {
             // We now support multiple dbs.
-            table* tbl1 = get_var(full_name);
+            table* tbl1 = get_resource(full_name);
             if (!tbl1) {
                 status s = create_table(db1, full_name, count, &tbl1);
                 if (s.code != OK) {
@@ -184,7 +195,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                     ret.error_message = "Table creation failed.\n";
                 }
                 else {
-                    set_var(full_name, tbl1);
+                    set_resource(full_name, tbl1);
                     ret.code = OK;
                 }
             }
@@ -204,6 +215,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         (void) op;
         return ret;
     } else if (d->g == CREATE_COLUMN) {
+        // Mark database as modified so we persist.
+        changed = 1;
+
         // Create a working copy, +1 for '\0'
         char* str_cpy = malloc(strlen(str) + 1);
         strncpy(str_cpy, str, strlen(str) + 1);
@@ -237,7 +251,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // Grab the table, which should already exist.
         status ret;
-        table* tbl1 = get_var(tbl_name);
+        table* tbl1 = get_resource(tbl_name);
         if (!tbl1) {
             log_err("No table found. %s: error at line: %d\n", __func__, __LINE__);
             ret.code = ERROR;
@@ -246,7 +260,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
         else {
             // Check to see if column already exists.
-            column* col1 = get_var(full_name);
+            column* col1 = get_resource(full_name);
             if (!col1) {
                 status s = create_column(tbl1, full_name, &col1);
                 if (s.code != OK) {
@@ -256,7 +270,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                 }
                 else {
                     ret.code = OK;
-                    set_var(full_name, col1);
+                    set_resource(full_name, col1);
                 }
             }
             else {
@@ -278,6 +292,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         ret.code = OK;
         return ret;
     } else if (d->g == RELATIONAL_INSERT) {
+        // Mark database as modified so we persist.
+        changed = 1;
+
         // Create a working copy, +1 for '\0'
         char* str_cpy = malloc(strlen(str) + 1);
         strncpy(str_cpy, str, strlen(str) + 1);
@@ -291,7 +308,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         status ret;
 
         // Get the pointer to the table.
-        table* tbl1 = get_var(tbl_name);
+        table* tbl1 = get_resource(tbl_name);
         if (!tbl1) {
             log_err("Table %s does not exists. Cannot insert!", tbl_name);
             ret.code = ERROR;
@@ -310,8 +327,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
             // Add values extracted from input by users
             char* count_str;
-            int64_t count;
-            op->value1 = malloc(sizeof(int64_t) * tbl1->col_count);
+            int count;
+            op->value1 = malloc(sizeof(int) * tbl1->col_count);
             for (size_t i = 0; i < tbl1->col_count; i++) {
                 count_str = strtok(NULL, comma);
                 if (count_str) {
@@ -357,16 +374,21 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             char* posn_name = strtok(args, comma);
             column* posn_vec = get_var(posn_name);
             if (!posn_vec) {
-                log_err("Variable %s not defined. %s: error at line %d\n",
-                    posn_name, __func__, __LINE__);
-                ret.code = ERROR;
-                ret.error_message = "Undefined variable";
-                free(str_cpy);
-                return ret;
+                // Try the resource
+                posn_vec = get_resource(posn_name);
+                if (!posn_vec) {
+                    log_err("Variable %s not defined. %s: error at line %d\n",
+                        posn_name, __func__, __LINE__);
+                    ret.code = ERROR;
+                    ret.error_message = "Undefined variable";
+                    free(str_cpy);
+                    return ret;
+                }
             }
+
             // We overload these operator fields.
             op->pos1 = posn_vec->data;
-            op->value1 = (int64_t*) &(posn_vec->count);
+            op->value1 = (int*) &(posn_vec->count);
         }
         else {
             op->pos1 = NULL;
@@ -375,7 +397,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // this gives us col_var
         char* col_name = strtok((d->g == SELECT_COLUMN ) ?  args : NULL, comma);
-        column* col1 = get_var(col_name);
+        column* col1 = get_resource(col_name);
         if (!col1) {
             log_err("Column %s does not exists. Cannot select!", col_name);
             ret.code = ERROR;
@@ -418,12 +440,12 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         comparator* c = NULL;
         // We have a query looking for values low <= x (x > low)
         if (strcmp(low_str, "null") != 0) {
-            int64_t low = atoi(low_str);
+            int low = atoi(low_str);
             // TODO FREE THIS
             comparator* tmp = malloc(sizeof(struct comparator));
             tmp->p_val = low;
             tmp->col = col1;
-            tmp->type = LESS_THAN | EQUAL;
+            tmp->type = GREATER_THAN | EQUAL;
             tmp->next_comparator = c;
             tmp->mode = NONE;
 
@@ -431,7 +453,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             c = tmp;
         }
         if (strcmp(high_str, "null") != 0) {
-            int64_t high = atoi(high_str);
+            int high = atoi(high_str);
             // TODO FREE THIS
             comparator* tmp = malloc(sizeof(struct comparator));
             tmp->p_val = high;
@@ -469,7 +491,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         status ret;
         // This gives us col_var
         char* col_name = strtok(args, comma);
-        column* col1 = get_var(col_name);
+        column* col1 = get_resource(col_name);
         if (!col1) {
             log_err("Column %s does not exists. Cannot select!", col_name);
             ret.code = ERROR;
@@ -481,13 +503,18 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         char* posn_name = strtok(NULL, comma);
         column* posn_vec = get_var(posn_name);
         if (!posn_vec) {
-            log_err("Variable %s not defined. %s: error at line %d\n",
-                posn_name, __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Undefined variable";
-            free(str_cpy);
-            return ret;
+            // Try the resource!
+            posn_vec = get_resource(posn_name);
+            if (!posn_vec) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    posn_name, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                return ret;
+            }
         }
+
 
         // We now execute the operation (TODO -- is this valid?)
         result* r = NULL;
@@ -528,16 +555,20 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         status ret;
         column* vec_val = get_var(vec_val_str);
         if (!vec_val) {
-            log_err("Variable %s not defined. %s: error at line %d\n",
-                vec_val_str, __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Undefined variable";
-            free(str_cpy);
-            return ret;
+            // Try the resource.
+            vec_val = get_resource(vec_val_str);
+            if (!vec_val) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    vec_val_str, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                return ret;
+            }
         }
 
         // Find the minimum or maximum
-        int64_t* res = malloc(sizeof(int64_t));
+        int* res = malloc(sizeof(int));
         *res = vec_val->data[0];
         if (strcmp(fun_str, "min") == 0) {
             for (size_t i = 0; i < vec_val->count; i++) {
@@ -560,8 +591,12 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             return ret;
         }
 
-        // Store the result
-        set_var(val_str, res);
+        // Store the result the a vector of length 1
+        column* col = malloc(sizeof(struct column));
+        col->data = res;
+        col->size = 1;
+        col->count = 1;
+        set_var(val_str, col);
 
         ret.code = OK;
         return ret;
@@ -589,25 +624,32 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         status ret;
         column* vec_val = get_var(vec_val_str);
         if (!vec_val) {
-            log_err("Variable %s not defined. %s: error at line %d\n",
-                vec_val_str, __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Undefined variable";
-            free(str_cpy);
-            return ret;
+            vec_val = get_resource(vec_val_str);
+            if (!vec_val) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    vec_val_str, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                return ret;
+            }
         }
         column* vec_pos = get_var(vec_pos_str);
         if (!vec_pos && strcmp(vec_pos_str, "null") != 0) {
-        log_err("Variable %s not defined. %s: error at line %d\n",
-                vec_pos_str, __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Undefined variable";
-            free(str_cpy);
-            return ret;
+            // Try the resource pool
+            vec_pos = get_resource(vec_pos_str);
+            if (!vec_pos) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    vec_pos_str, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                return ret;
+            }
         }
 
         // Find the index of the minimum or maximum
-        int64_t* res = malloc(sizeof(int64_t));
+        int* res = malloc(sizeof(int));
         *res = vec_val->data[0];
         if (strcmp(fun_str, "min") == 0) {
             for (size_t i = 0; i < vec_val->count; i++) {
@@ -631,15 +673,27 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Store the value result
-        int64_t* value = malloc(sizeof(int64_t));
+        int* value = malloc(sizeof(int));
         *value = vec_val->data[*res];
-        set_var(val_str, value);
+
+        // Store in an array of length 1
+        column* col = malloc(sizeof(struct column));
+        col->data = value;
+        col->size = 1;
+        col->count = 1;
+        set_var(val_str, col);
 
         // Determine index to store
         if (vec_pos) {
             *res = vec_pos->data[*res];
         }
-        set_var(pos_str, res);
+
+        // Store in an array of length 1
+        col = malloc(sizeof(struct column));
+        col->data = res;
+        col->size = 1;
+        col->count = 1;
+        set_var(pos_str, col);
 
         ret.code = OK;
         return ret;
@@ -661,12 +715,15 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         status ret;
         column* vec_val = get_var(vec_val_str);
         if (!vec_val) {
-            log_err("Variable %s not defined. %s: error at line %d\n",
-                vec_val_str, __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Undefined variable";
-            free(str_cpy);
-            return ret;
+            vec_val = get_resource(vec_val_str);
+            if (!vec_val) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    vec_val_str, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                return ret;
+            }
         }
 
         // Find the average
@@ -677,7 +734,13 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         double* res = malloc(sizeof(double));
         *res = sum / ((long double) vec_val->count);
 
-        set_var(scl_str, res);
+        // Size of vector is 1
+        column* col = malloc(sizeof(struct column));
+        // TODO: Figure out how to deal with these!
+        col->data = (int*) res;
+        col->size = 1;
+        col->count = 1;
+        set_var(scl_str, col);
 
         ret.code = OK;
         return ret;
@@ -699,22 +762,28 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         char* vec_val1_str = strtok(args, comma);
         column* vec_val1 = get_var(vec_val1_str);
         if (!vec_val1) {
-            log_err("Variable %s not defined. %s: error at line %d\n",
-                vec_val1_str, __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Undefined variable";
-            free(str_cpy);
-            return ret;
+            vec_val1 = get_resource(vec_val1_str);
+            if (!vec_val1) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    vec_val1_str, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                return ret;
+            }
         }
         char* vec_val2_str = strtok(NULL, comma);
         column* vec_val2 = get_var(vec_val2_str);
         if (!vec_val2) {
-            log_err("Variable %s not defined. %s: error at line %d\n",
-                vec_val2_str, __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Undefined variable";
-            free(str_cpy);
-            return ret;
+            vec_val2 = get_resource(vec_val2_str);
+            if (!vec_val2) {
+                log_err("Variable %s not defined. %s: error at line %d\n",
+                    vec_val2_str, __func__, __LINE__);
+                ret.code = ERROR;
+                ret.error_message = "Undefined variable";
+                free(str_cpy);
+                return ret;
+            }
         }
 
         // Vectors must be the same size.
@@ -731,7 +800,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         column* res = malloc(sizeof(struct column));
         res->size = n;
         res->count = n;
-        res->data = malloc(sizeof(int64_t) * res->size);
+        res->data = malloc(sizeof(int) * res->size);
 
         // Determine operation to be performed!
         // TODO (What would be really cool would be to do all of this lazily!)
@@ -758,6 +827,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         return ret;
     }
     else if (d->g == TUPLE) {
+
         // Create a working copy, +1 for '\0'
         char* str_cpy = malloc(strlen(str) + 1);
         strncpy(str_cpy, str, strlen(str) + 1);
@@ -775,8 +845,8 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         op->c = NULL;
 
         // Count how many columns we're printing.
-        int64_t ncols = 1;
-        int64_t i = 0;
+        int ncols = 1;
+        int i = 0;
         while (args[i] != '\0') {
             if (args[i] == ',') {
                 ncols++;
@@ -787,10 +857,10 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         // Extract the first column!
         status ret;
         op->columns = malloc(sizeof(struct column*) * ncols);
-        op->pos1 = malloc(sizeof(int64_t));
+        op->pos1 = malloc(sizeof(int));
         *(op->pos1) = ncols;  // We override this to pass along the information  about ncols
         char* col_name = strtok(args, comma);
-        column* col = get_var(col_name);
+        column* col = get_resource(col_name);
         if (!col){
             log_err("Variable %s not defined. %s: error at line %d\n",
                 col_name, __func__, __LINE__);
@@ -804,9 +874,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         size_t col_count = col->count;
 
         // Grab the remaining columns!
-        for (int64_t i = 1; i < ncols; i++) {
+        for (int i = 1; i < ncols; i++) {
             col_name = strtok(NULL, comma);
-            col = get_var(col_name);
+            col = get_resource(col_name);
             if (!col) {
                 log_err("Variable %s not defined. %s: error at line %d\n",
                     col_name, __func__, __LINE__);
@@ -839,25 +909,48 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         ret.code = OK;
         return ret;
     }
-    else if (d->g == SHUTDOWN) {
+    else if (d->g == SHUTDOWNCOMMAND) {
         status ret;
-        // Our metadata file needs to be overwritten
-        FILE* mfile = fopen("server.meta", "w");
-        for (size_t i = 0; i < databases.count; i++) {
-            db* db = (struct db*)(databases.data[i]);
-            fprintf(mfile, "%s,%zd\n", db->name, db->table_count);
-            status s = sync_db(db);
-            if (s.code != OK) {
-                log_err("Unable to store database %s", db->name);
-                fclose(mfile);
-                return s;
-            }
-        }
-        fclose(mfile);
 
+        if (changed) {
+            // Make our data directory if it doesn't already exist.
+            struct stat st = {0};
+            if (stat(DATA_FOLDER, &st) == -1) {
+                mkdir(DATA_FOLDER, 0700);
+            }
+
+            // Our metadata file needs to be overwritten
+            char filename[DEFAULT_ARRAY_SIZE];
+            sprintf(filename, "%s/%s.meta", DATA_FOLDER, SYSTEM_META_FILE);
+            FILE* mfile = fopen(filename, "w");
+            if (!mfile) {
+                log_err("Could not create metadata file %s for server.\n", filename);
+                ret.code = ERROR;
+                ret.error_message = "File creation failed.\n";
+                return ret;
+            }
+
+            // Write out the number of databases
+            fprintf(mfile, "%zu\n", databases.count);
+
+            for (size_t i = 0; i < databases.count; i++) {
+                db* db = (struct db*)(databases.data[i]);
+                fprintf(mfile, " %s %zu\n", db->name, db->table_count);
+                status s = sync_db(db);
+                if (s.code != OK) {
+                    log_err("Unable to store database %s", db->name);
+                    fclose(mfile);
+                    return s;
+                }
+            }
+            fclose(mfile);
+        }
+
+        // Successfully persisted the data.
+        op->type = SHUTDOWN;
         ret.code = OK;
         return ret;
-        // TODO: Need to free a lot of stuff?
+
     }
 
     // Should have been caught earlier...
