@@ -96,6 +96,17 @@ typedef struct column {
 } column;
 
 /**
+ * SortedIndex
+ * Sorted indexes are simple. They contain a copy of the data, in sorted order.
+ * They also contain a position column which maps the sorted data to the index
+ * in the clustered/unclustered data.
+*/
+typedef struct SortedIndex {
+    column* data;
+    column* pos;
+} SortedIndex;
+
+/**
  * table
  * Defines a table structure, which is composed of multiple columns.
  * We do not require you to dynamically manage the size of your tables,
@@ -423,7 +434,7 @@ status create_column(table *table, const char* name, column** col);
  * returns  : the status of the operation.
  **/
 status create_index(column* col, IndexType type);
-
+status create_secondary_index(column* col, IndexType type);
 
 /**
  * cluster_table(tbl);

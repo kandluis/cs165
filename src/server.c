@@ -264,8 +264,9 @@ void load_data(int client_socket, message* recv_message){
     strncpy(str_cpy, cols[0]->name, strlen(cols[0]->name) + 1);
 
     // Now we split on periods to extract table name db.tbl.col
-    strtok(str_cpy, ".");
-    char* tbl_name = strtok(NULL, ".");
+    char* tbl_name = strtok(str_cpy, ".");
+    char* period = strtok(NULL, ".");
+    *period = '.';
 
     // TOOD(luisperez): Do we really want to crash here?
     if (strcmp(strtok(NULL, "."), cols[0]->name) != 0) {

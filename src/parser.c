@@ -969,7 +969,90 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         return ret;
     }
     else if (d->g == CREATE_INDEX) {
+        // Mark changes to database as an index modifies the underlying data
+        changed = 1;
         status ret;
+
+        // Crete a working copy
+        char* str_cpy = malloc(strlen(str) + 1);
+        strncpy(str_cpy, str, strlen(str) + 1);
+
+        // This gives us everything inside the (idx,<col_name>,<type>)
+        strtok(str_cpy, open_paren);
+        char* args = strtok(NULL, close_paren);
+
+        // This gives us "idx"
+        strtok(args, comma);
+
+        // Try to grab the column and type
+        char* col_name = strtok(NULL, comma);
+        char* type = strtok(NULL, comma);
+        column* col = get_resource(col_name);
+        if (!col) {
+            log_err("No column found. %s: error at line: %d\n", __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Column does not exist.\n";
+            free(str_cpy);
+            return ret;
+        }
+
+        // Access the table name
+        char* tbl_name = strtok(col_name, ".");
+        char* period = strtok(NULL, ".");
+        *(period - 1) = '.';
+
+        // Try to grab the table
+        table* tbl = get_resource(tbl_name);
+        if (!tbl) {
+            log_err("No table found. %s: error at line: %d\n", __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Table does not exist.\n";
+            free(str_cpy);
+            return ret;
+        }
+
+        // TODO(luisperez): Special case when we create index on a leading column;
+        // Essentially, we just want to make sure that the column we're working
+        // on isn't the leading column for the clustered index.
+        if (!tbl->cluster_column || tbl->cluster_column != col) {
+
+            // Let's deal first with creating a secondary sorted index
+            if (strcmp(type, "sorted") == 0) {
+                status s = create_secondary_index(col, SORTED);
+                if (s.code != OK) {
+                    log_err("Failed at creating secondary sorted index");
+                    free(str_cpy);
+                    return s;
+                }
+            }
+
+            // Let's deal next with creating secondary btree index
+            else if (strcmp(type, "btree") == 0) {
+                status s = create_secondary_index(col, B_PLUS_TREE);
+                if (s.code != OK) {
+                    log_err("Failed at creating secondary index (btree)");
+                    free(str_cpy);
+                    return s;
+                }
+            }
+
+            // We do not yet support other types! TODO
+            else {
+                log_err("Unsupported secondary index type %s. %s: line %d.\n",
+                    type, __func__, __LINE__);
+                ret.error_message = "Unsupported index type";
+                ret.code = ERROR;
+                free(str_cpy);
+                return ret;
+            }
+        }
+        else {
+            // TODO (what if we want to re-cluster the leading column)
+        }
+
+        ret.code = OK;
+        free(str_cpy);
+        return ret;
 
     }
     else if (d->g == LOADCOMMAND) {

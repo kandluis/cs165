@@ -477,6 +477,90 @@ void mergesort(Data* A, Data* pos, int start, int end) {
 }
 
 
+// Similar to the xrange function in python, allocates a
+// column with 0...n-1 integers.
+column* xrange(size_t n){
+    column* res = malloc(sizeof(struct column));
+    res->data = calloc(n, sizeof(Data));
+    for (size_t i = 0; i < n; i++) {
+        res->data[i].i = i;
+    }
+    res->type = INT;
+    res->count = n;
+
+    return res;
+}
+
+// Copies the column data in c into a new column.
+column* copycolumn(column* col) {
+    column* res = malloc(sizeof(struct column));
+    res->name = col->name;
+    // Copy data (TODO- size or count)
+    res->data = calloc(col->count, sizeof(Data));
+    for (size_t i = 0; i < col->count; i++) {
+        res->data[i] = col->data[i];
+    }
+    res->size = col->count;
+    res->count = col->count;
+    res->type = col->type;
+    return res;
+}
+
+// We add secondary index to the column.
+status create_secondary_index(column* col, IndexType type) {
+    status ret;
+    // Free any previous indexes based on type.
+    if (col->index) {
+        if (col->index->type == SORTED) {
+            free(col->index->index);
+        }
+        else if (col->index->type == B_PLUS_TREE) {
+            // TODO(luisperez): Free a btree
+            free(col->index->index);
+        }
+        else {
+            // We still free it, but don't know it's type.
+            free(col->index->index);
+            log_err("Invalid index detected. %s, line %d\n", __func__, __LINE__);
+        }
+    }
+
+    // Allocate space for the index if non-existent
+    if (!col->index) {
+        col->index = calloc(1, sizeof(struct column_index));
+    }
+
+    if (type == SORTED) {
+        // We create copies of the data
+        column* pos = xrange(col->count);
+        column* data = copycolumn(col);
+
+        // Then we sort them!
+        mergesort(data->data, pos->data, 0, col->count);
+
+        // An now we have an index!
+        col->index->type = SORTED;
+        col->index->index = malloc(sizeof(SortedIndex));
+        ((SortedIndex*) (col->index->index))->data = data;
+        ((SortedIndex*) (col->index->index))->pos = pos;
+
+        // We are done!
+        ret.code = OK;
+        return ret;
+    }
+    else if (type == B_PLUS_TREE) {
+        // TODO(luisperez): Implement a b+ tree
+        ret.code = ERROR;
+        ret.error_message = "Unimplemented!";
+        return ret;
+    }
+    else {
+        log_err("Unsupported index. %s: line %d\n", __func__, __LINE__);
+        ret.code = ERROR;
+        ret.error_message = "Unsupported index type.";
+        return ret;
+    }
+}
 
 status cluster_table(table* tbl) {
     status s;
@@ -494,12 +578,7 @@ status cluster_table(table* tbl) {
 
     // Now we need to cluster, so we first sort the cluster_column
     column* pcol = tbl->cluster_column;
-    column* pos = malloc(sizeof(struct column));
-    pos->data = calloc(sizeof(Data), pcol->count);
-    pos->type = INT;
-    for (size_t i = 0; i < pcol->count; i++) {
-        pos->data[i].i = i;
-    }
+    column* pos = xrange(pcol->count);
 
     // After this call, pos is sorted!
     mergesort(pcol->data, pos->data, 0, pcol->count - 1);
