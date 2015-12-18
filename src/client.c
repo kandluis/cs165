@@ -93,6 +93,9 @@ void process_load_command(char* cmd, int client_socket, message* send_message) {
         }
         fclose(fp);
     }
+    else {
+        log_err("Unable to open file for loading. %s.\n", filename);
+    }
 
     // Send a final message (EOF) that we've reached end of file!
     // This trigger the server to respond!

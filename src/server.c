@@ -80,9 +80,31 @@ char* execute_db_operator(db_operator* query) {
         // Extract the table.
         table* tbl = query->tables[0];
 
+        // If we don't have a clustered column, we can just insert at the end.
+        size_t inser_pos = tbl->col[0]->count - 1;
+        if (tbl->cluster_column) {
+            // Determine the position at which to insert based on clustering
+            column* col = tbl->cluster_column;
+            if (!col->index) {
+                log_err("No index on clustered column!?");
+            }
+            else {
+                // Find the value which we wish to insert!
+                size_t col_index;
+                for (size_t i = 0; i < tbl->col_count; i++) {
+                    if (col == tbl->col[i]) {
+                        col_index = i;
+                        break;
+                    }
+                }
+                inser_pos = find_pos(col, query->value1[col_index]);
+            }
+        }
+
         // Iterate over the columns and insert the values
         for(size_t i = 0; i < tbl->col_count; i++) {
-            status s = insert(query->columns[i], query->value1[i]);
+            // Keep clustering by inserting into the appropriate positions.
+            status s = insert_pos(query->columns[i], insert_pos, query->value1[i]);
             if (s.code == ERROR) {
                 ret = s.error_message;
                 break;
@@ -266,15 +288,7 @@ void load_data(int client_socket, message* recv_message){
     // Now we split on periods to extract table name db.tbl.col
     char* tbl_name = strtok(str_cpy, ".");
     char* period = strtok(NULL, ".");
-    *period = '.';
-
-    // TOOD(luisperez): Do we really want to crash here?
-    if (strcmp(strtok(NULL, "."), cols[0]->name) != 0) {
-        log_err("%s does not match %s!\n", cols[0]->name);
-        free(cols);
-        free(str_cpy);
-        return;
-    }
+    *(period-1) = '.';
 
     // Get the table from resource pool
     table* tbl = get_resource(tbl_name);

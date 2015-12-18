@@ -101,6 +101,9 @@ typedef struct column {
  * They also contain a position column which maps the sorted data to the index
  * in the clustered/unclustered data.
 */
+ // TODO: Store data in sortToPos to make it easier to find the elements.
+ // ie, store mappings from cluster_index -> sorted_index
+ // in addition to sorted_index->cluster_index as is currently done.
 typedef struct SortedIndex {
     column* data;
     column* pos;
@@ -449,7 +452,6 @@ status delete(column *col, int *pos);
 status update(column *col, int *pos, int new_val);
 status fetch(column *col, column *pos, result **r);
 status col_scan(comparator *f, column *col, result **r);
-status index_scan(comparator *f, column *col, result **r);
 
 /* Query API */
 status query_prepare(const char* query, db_operator** op);

@@ -7,13 +7,13 @@ all: client server
 debug: client server
 
 # C-compiler settings
-CC = clang -std=c99 -g -ggdb3
+CC = gcc -std=c99 -g -ggdb3
 
 # Default optimization level
 O ?= 0
 
 # Flags and other libraries
-override CFLAGS += -Wall -Wextra -pedantic -pthread -O$(O) -I$(INCLUDES)
+override CFLAGS += -Wall -Wextra -pedantic -pthread -O$(O) -I$(INCLUDES) -DLOG -DLOG_ERR -DLOG_INFO
 LDFLAGS =
 LIBS =
 INCLUDES = include

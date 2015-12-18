@@ -271,17 +271,46 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                     if (strcmp(sorting_str, "sorted") == 0) {
                         col1->index = calloc(1, sizeof(struct column_index));
                         if (!col1->index) {
-                            log_err("Index creation failed. ^s: error at line %d\n",
+                            log_err("Index creation failed. %s: error at line %d\n",
                                 __func__, __LINE__);
                             ret.code = ERROR;
                             ret.error_message = "Failed inserting sorted column";
                         }
-                        col1->index->type = SORTED;
-                        col1->index->index = (void*) col1->data;
+                        else {
+                            col1->index->type = SORTED;
 
+                            // We use a SortedIndex except we don't need to copy the data
+                            // because we sort it in place.
+                            SortedIndex index = calloc(1, sizeof(SortedIndex));
+                            col1->index->index = index;
+                            index->data = col1;
+                            index->pos = NULL; // Cluster index has pos null.
 
-                        // The table is clustered on this column
-                        tbl1->cluster_column = col1;
+                            // The table is clustered on this column
+                            tbl1->cluster_column = col1;
+                        }
+                    }
+                    else if (strcmp(sorting_str), "btree") == 0)) {
+                        col1->index = calloc(1, sizeof(struct  column_index));
+                        if (!col1->index) {
+                             log_err("Index creation failed. %s: error at line %d\n",
+                                __func__, __LINE__);
+                            ret.code = ERROR;
+                            ret.error_message = "Failed inserting btree column";
+                        }
+                        else {
+                            col1->index->type = B_PLUS_TREE;
+
+                            // The table is clustered on this column
+                            // tbl1->cluster_column = col1;
+                            // TODO(luisperez): Deal with the btree
+                            // col1->index->index = init_btree();
+                        }
+                    }
+                    else {
+                        log_err("Index of type %s is currently not supported.\n", sorting_str);
+                        ret.code = ERROR;
+                        ret.error_message = "Index for column cannot be created.";
                     }
                     set_resource(full_name, col1);
                 }
@@ -592,24 +621,61 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
 
         // Find the minimum or maximum (ONLY SUPPORT INTEGERS)
+        // The below runs on an unsorted column with no indexes.
         Data* res = calloc(1, sizeof(Data));
-        *res = vec_val->data[0];
-        if (strcmp(fun_str, "min") == 0) {
-            for (size_t i = 0; i < vec_val->count; i++) {
-                if (vec_val->data[i].i < res->i) {
-                    *res = vec_val->data[i];
+        if (!vec_val->index || !vec_val->index->index) {
+            *res = vec_val->data[0];
+            if (strcmp(fun_str, "min") == 0) {
+                for (size_t i = 0; i < vec_val->count; i++) {
+                    if (vec_val->data[i].i < res->i) {
+                        *res = vec_val->data[i];
+                    }
                 }
             }
-        }
-        else if (strcmp(fun_str, "max") == 0) {
-            for (size_t i = 0; i < vec_val->count; i++) {
-                if (vec_val->data[i].i > res->i) {
-                    *res = vec_val->data[i];
+            else if (strcmp(fun_str, "max") == 0) {
+                for (size_t i = 0; i < vec_val->count; i++) {
+                    if (vec_val->data[i].i > res->i) {
+                        *res = vec_val->data[i];
+                    }
                 }
             }
+            else {
+                ret.error_message = "Unsupported operation.\n";
+                ret.code = ERROR;
+                log_err(ret.error_message);
+                free(str_cpy);
+                free(res);
+                return ret;
+            }
         }
+
+        // We have an index, check to see if b_tree or sorted
+        else if (vec_val->index->type == SORTED) {
+            SortedIndex* idx = vec_val->index->index;
+            if (strcmp(fun_str, "min") == 0) {
+                // Access the sorted data and return the first value.
+                *res = idx->data->data[0];
+            }
+            else if (strcmp(fun_str, "max") == 0) {
+                // Access the sorted data and return the last value
+                *res = idx->data->data[idx->data->count - 1];
+            }
+            else {
+                ret.error_message = "Unsupported operation.\n";
+                ret.code = ERROR;
+                log_err(ret.error_message);
+                free(str_cpy);
+                free(res);
+                return ret;
+            }
+        }
+        else if (vec_val->index->type == B_PLUS_TREE) {
+            // TODO!
+            log_err("Do not support b trees yet");
+        }
+        // Unsupported index!
         else {
-            ret.error_message = "Unsupported operation.\n";
+            ret.error_message = "Unsupported index.\n";
             ret.code = ERROR;
             log_err(ret.error_message);
             free(str_cpy);
@@ -679,23 +745,57 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // Find the index of the minimum or maximum
         Data* res = calloc(1, sizeof(Data));
-        *res = vec_val->data[0];
-        if (strcmp(fun_str, "min") == 0) {
-            for (size_t i = 0; i < vec_val->count; i++) {
-                if (vec_val->data[i].i < res->i) {
-                    res->i = i;
+        if (!vec_val->index || !vec_val->index->index) {
+            *res = vec_val->data[0];
+            if (strcmp(fun_str, "min") == 0) {
+                for (size_t i = 0; i < vec_val->count; i++) {
+                    if (vec_val->data[i].i < res->i) {
+                        res->i = i;
+                    }
                 }
             }
-        }
-        else if (strcmp(fun_str, "max") == 0) {
-            for (size_t i = 0; i < vec_val->count; i++) {
-                if (vec_val->data[i].i > res->i) {
-                    res->i = i;
+            else if (strcmp(fun_str, "max") == 0) {
+                for (size_t i = 0; i < vec_val->count; i++) {
+                    if (vec_val->data[i].i > res->i) {
+                        res->i = i;
+                    }
                 }
             }
+            else {
+                ret.error_message = "Unsupported operation.\n";
+                ret.code = ERROR;
+                log_err(ret.error_message);
+                free(str_cpy);
+                free(res);
+                return ret;
+            }
         }
+
+        // We have an index, check to see if b_tree or sorted.
+        else if (vec_val->index->type == SORTED) {
+            SortedIndex idx = vec_val->index->index;
+            if (strcmp(fun_str, "min") == 0) {
+                *res =  idx->pos->data[0];
+            }
+            else if (strcmp(fun_str, "max") == 0) {
+                *res = idx->pos->data[idx->pos->count - 1];
+            }
+            else {
+                ret.error_message = "Unsupported operation.\n";
+                ret.code = ERROR;
+                log_err(ret.error_message);
+                free(str_cpy);
+                free(res);
+                return ret;
+            }
+        }
+        else if (vec_val->index->type == B_PLUS_TREE) {
+            // TODO!
+            log_err("Do not support b trees yet");
+        }
+        // Unsupported index!
         else {
-            ret.error_message = "Unsupported operation.\n";
+            ret.error_message = "Unsupported index.\n";
             ret.code = ERROR;
             log_err(ret.error_message);
             free(str_cpy);
@@ -1048,6 +1148,32 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         }
         else {
             // TODO (what if we want to re-cluster the leading column)
+            // This just involves some work resorting the indexes on other
+            // columns that already have an index, I believe.
+            // For now, we assume we don't want to do this, unless we do it
+            // on a normal column. We really want to re-cluster the whole
+            // table at this point.
+            // Though, because we currently only support btrees and
+            // sorted arrays, we really don't need to do anything other than
+            // change the index type and recreate it.
+            // We have a function that takes care of this which reclusteres
+            // the entire table.
+            if (strcmp(type, "sorted") == 0) {
+                status s = recluster(tbl,SORTED);
+                if (s.code != OK) {
+                    log_err(ret.error_message);
+                    free(str_cpy);
+                    return s;
+                }
+            }
+            else if (strcmp(type, "btree") == 0) {
+                status s = recluster(tbl, B_PLUS_TREE);
+                if (s.code != OK) {
+                    log_err(s.error_message);
+                    free(str_cpy);
+                    return s;
+                }
+            }
         }
 
         ret.code = OK;

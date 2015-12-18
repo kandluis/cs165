@@ -453,8 +453,8 @@ void merge(Data* A, Data* pos, int start, int mid, int end) {
 
     // Now we copy the results back into A assuming the spaces are continguous.
     while (--k >= 0) {
-        A[k] = tmp[k];
-        pos[k] = tpos[k];
+        A[start + k] = tmp[k];
+        pos[start + k] = tpos[k];
     }
 }
 
@@ -466,11 +466,11 @@ void mergesort(Data* A, Data* pos, int start, int end) {
     }
 
     // Otherwise split in half.
-    int mid = end - (end - start) / 2;
+    int mid = (end + start) / 2;
 
     // Mergesort each half
-    mergesort(A, pos, start, mid - 1);
-    mergesort(A, pos, mid, end);
+    mergesort(A, pos, start, mid);
+    mergesort(A, pos, mid + 1, end);
 
     // And merge the two
     merge(A, pos, start, mid, end);
@@ -480,20 +480,21 @@ void mergesort(Data* A, Data* pos, int start, int end) {
 // Similar to the xrange function in python, allocates a
 // column with 0...n-1 integers.
 column* xrange(size_t n){
-    column* res = malloc(sizeof(struct column));
+    column* res = calloc(1, sizeof(struct column));
     res->data = calloc(n, sizeof(Data));
     for (size_t i = 0; i < n; i++) {
         res->data[i].i = i;
     }
     res->type = INT;
     res->count = n;
+    res->size = n;
 
     return res;
 }
 
 // Copies the column data in c into a new column.
 column* copycolumn(column* col) {
-    column* res = malloc(sizeof(struct column));
+    column* res = calloc(1 ,sizeof(struct column));
     res->name = col->name;
     // Copy data (TODO- size or count)
     res->data = calloc(col->count, sizeof(Data));
@@ -504,6 +505,37 @@ column* copycolumn(column* col) {
     res->count = col->count;
     res->type = col->type;
     return res;
+}
+
+status recluster(table* tbl, IndexType newtype) {
+    // Let's recluster only if the current type does not match the new type.
+    status ret;
+    if (tbl->cluster_column->index->type != newtype) {
+        if (newtype == SORTED) {
+            // We had a btree before and now we want... sorted data?
+            log_err("Unimplemented btree to sorted conversion. %s: line %d.\n",
+                __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Unimplemented.\n";
+            return ret;
+        }
+        else if (newtype == B_PLUS_TREE) {
+            // TODO create a bplus tree!
+            log_err("Unimplemented sorted to btree conversion.");
+            ret.code = ERROR;
+            ret.error_message = "Unimplemented.\n";
+            return ret;
+        }
+        else {
+            log_err("Unsupported index type! Cannot recluster");
+            ret.code = ERROR;
+            ret.error_message = "Unsupported index type!\n";
+            return ret;
+        }
+    }
+
+    ret.code = OK;
+    return ret;
 }
 
 // We add secondary index to the column.
@@ -536,7 +568,7 @@ status create_secondary_index(column* col, IndexType type) {
         column* data = copycolumn(col);
 
         // Then we sort them!
-        mergesort(data->data, pos->data, 0, col->count);
+        mergesort(data->data, pos->data, 0, col->count - 1);
 
         // An now we have an index!
         col->index->type = SORTED;
@@ -580,7 +612,7 @@ status cluster_table(table* tbl) {
     column* pcol = tbl->cluster_column;
     column* pos = xrange(pcol->count);
 
-    // After this call, pos is sorted!
+    // After this call, pos is sorted in the order specified by pcol.
     mergesort(pcol->data, pos->data, 0, pcol->count - 1);
 
     // Now, for each column, we fetch based on positions.
@@ -605,14 +637,76 @@ status cluster_table(table* tbl) {
     free(pos);
     s.code = OK;
     return s;
-
 }
 
-// Inserts the given value into positions specified by pos.
-status insert_pos(column *col, size_t pos, Data data) {
+
+// Binary searches the array for the given element and returns
+// the index at which it should be inserted to maintain sorted order.
+// The array is restricted to [start,end] (inclusive).
+// Last parameter is the total size of th ENTIRE array
+// Returns the smallest index possible for insertion to mainted sortedness.
+size_t find_index(Data* array, size_t start, size_t end, Data el, size_t size) {
+    // If only one element or if we've found the element.
+    size_t mid = start + end / 2;
+    if (start == end || el.i == array[mid].i) {
+        // We can insert here because they are equal.
+        if (array[start].i == el.i) {
+            return start;
+        }
+        // Search before until we hit bottom or find element smaller.
+        else if (el.i < array[start].i) {
+            while (start != 0) {
+                if (array[--start].i <= el.i) {
+                    return start + 1;
+                }
+            }
+
+            // Insert at the beginning of the array (so BAD!)
+            return start;
+        }
+        // Search after until we hit top or find element larger
+        else {
+            while (start != size) {
+                if (array[++start].i >= el.i) {
+                    return start;
+                }
+            }
+            // Insert at the end!
+            return size;
+        }
+    }
+
+    // Now we handle the recursive case!
+    size_t mid = start + end / 2;
+    if (el.i < array[mid].i) {
+        return find_index(array, start, (mid - 1 > start) ? mid - 1 : start, el, size);
+    }
+    else { // el.i > array[mid].i
+        return find_index(array, (mid + 1 < end) ? mid + 1 : end, end, el, size);
+    }
+}
+
+// Find the position on which we insert the value. Column must be indexed.
+size_t find_pos(column* col, Data data) {
+    if (col->index->type == SORTED) {
+        return find_index(col->data, 0, col->count - 1, data, col->count - 1);
+    }
+    else if (col->index->type == B_PLUS_TREE) {
+        // TOOD(luisperez): Find the position to insert into using the
+        // tree.
+        return col->count - 1;
+    }
+    else {
+        log_err("Unsupported index type on cluster column.");
+        return col->count - 1;
+    }
+}
+
+// Inserts datume into arr at the specified location. Returns size array.
+status insert_into_column(column* col, Data datum, size_t pos) {
     status ret;
-     if (col->count >= col->size) {
-        log_info("No space for data in column %s. Creating more space.\n", col->name);
+    if (col->count >= col->size) {
+        log_info("No space for data in column. Creating more space.\n", col->name);
         size_t newcount = 2 * col->count + 1;
         if (newcount == 1) {
             newcount = DEFAULT_ARRAY_SIZE;
@@ -636,24 +730,56 @@ status insert_pos(column *col, size_t pos, Data data) {
         col->size = newcount;
     }
 
-    // Set the value into the column by shifting everything down!
     Data tmp;
     while (pos < col->count) {
         tmp = col->data[pos];
-        col->data[pos++] = data;
-        data = tmp;
+        col->data[pos++] = datum;
+        datum = tmp;
     }
-    col->data[col->count++] = data;
-    ret.code = OK;
+    col->data[pos++] = datum;
+    return pos;
+}
 
-    // We've added a new element
+// Inserts the given value into positions specified by pos.
+status insert_pos(column *col, size_t pos, Data data) {
+    status ret = insert_into_column(col, data, pos);
+    if (ret.code != OK){
+        log_err("Failed to insert into column. %s: line %s.\n",
+            __func__, __LINE__);
+        return ret;
+    }
+
+    // We've added a new element, now update the index if necessary
+    // We have an index with allocated index space and we are not a cluster column.
+    if (col->index && col->index->index && col) {
+        // TODO(luisperez): Currently only support sorted indexes
+        if (col->index->type == SORTED) {
+            SortedIndex idx = col->index->index;
+            // We only need to do stuff for an unclustered column
+            if (idx->data != col &&
+                idx->pos != NULL) {
+                // The first step is inserting the value into the sorted array.
+                size_t sorted_pos = find_pos(idx->data, data);
+                ret = insert_into_column(idx->data, data, sorted_pos);
+                if (ret.code != OK) {
+                    ret.error_message = "Failed to insert into sorted column index.";
+                    log_err("Failed to insert into column index");
+                    return ret;
+                }
+                // Insert the position
+                Data d;
+                d.i = pos;
+                ret = insert_into_column(idx->pos, d);
+            }
+        }
+    }
     return ret;
 
 }
 
 status insert(column* col, Data data)
 {
-    return insert_pos(col, col->count, data);
+    return insert_pos(col, col->count-1, data);
 }
 
 status delete(column* col, int* pos)
@@ -752,6 +878,80 @@ status fetch(column* col, column* pos,  result** r){
     return ret;
 }
 
+// These functions are not exposed as they assume work from col_scan
+status index_scan(comparator* f, column* col, result** r, Data* pos)
+{
+    // This function IS ONLY called from col_scan. Assume input parameters.
+    status ret;
+    size_t size = (*r)->num_tuples;
+    size_t res_pos = 0;
+
+    // Extract the min/max from the operator, if possible, so we can find their indexes
+    size_t min_index = 0;
+    size_t max_index = col->count - 1;
+
+    // Sorted column
+    // TODO(luisperez: Deal with BTree)
+    // We assume that we have a sorted index column.
+    SortedIndex* sorted = col->index->index->data;
+
+    // We assume only the first two relevant matter.
+    while (f) {
+        if (f->type == GREATER_THAN && min_index == 0) {
+            Data min;
+            min.i = f->p_val;
+            min_index = find_index(sorted->data->data, 0, sorted->data->count - 1, min, sorted->count);
+
+            // This is the index for the sorted data!
+        }
+        else if ((f->type == LESS_THAN | EQUAL) && max_index == col->count - 1) {
+            Data max;
+            max.i = f->p_val;
+            max_index = find_index(sorted->data->data, 0, sorted->count - 1, max, sorted->count);
+        }
+        f = f->next_comparator;
+    }
+
+    // This is a sequential scan, we just need to find a good starting point.
+    if (!pos) {
+        // Clustered.
+        if (sorted-> || sorted == col) {
+            for(size_t i = min_index, i < max_index; i++) {
+                // Return the clustered position index.
+                (*r)->payload[res_pos++] = sorted->pos->data[i];
+            }
+        }
+    }
+    // TODO this does not get run, as we maintain normal shit.
+    // for the case when we're given a pos vector!
+    // This is mentioned in the TODO for the SortedIndex.
+    // Currently, we simply don't deal with this issue?
+    // This code here is never run because we do a normal sequential
+    // scan in the case where pos is given. See col_scan for details.
+    else {
+        // Let's assume that pos is also sorted so we can make this efficiently
+        // TODO(luisperes): Deal with the case where pos isn't sorted?
+        Data max_index_data;
+        Data min_index_data;
+        max_index_data.i = max_index;
+        min_index_data.i = min_index;
+        size_t min_pos_index = find_index(pos, 0, (*r)->num_tuples - 1,
+            min_index_data, (*r)->num_tuples);
+        size_t max_pos_index = find_index(pos, 0, (*r)->num_tuples - 1,
+            max_index_data, (*r)->num_tuples);
+        for (size_t ii = min_pos_index; ii < max_pos_index; ii++) {
+            // We index pos, which
+            (*r)->payload[res_pos++] = pos[ii];
+        }
+
+    }
+
+    (*r)->num_tuples = res_pos;
+    ret.code = OK;
+    return ret;
+
+}
+
 status col_scan(comparator* f, column* col, result** r)
 {
     // The positions we need to scan are stored in *r->payload.
@@ -770,6 +970,14 @@ status col_scan(comparator* f, column* col, result** r)
     // We override with a new array because this data will be saved too!
     (*r)->payload = calloc(size, sizeof(Data));
 
+
+    // Check if we have an index on this column.
+    // TODO(we are only dealing with full column scans!)
+    if (!pos && col->index && col->index->index) {
+        return index_scan(f, col, r, pos);
+    }
+
+    // Otherwise do a dumb scan on the data.
     // This is a full column scan.
     if (!pos){
         for(size_t i = 0; i < col->count; i++) {
@@ -777,8 +985,6 @@ status col_scan(comparator* f, column* col, result** r)
                 (*r)->payload[res_pos++].i = i;
             }
         }
-        // Now we have a new result stored in r.
-        (*r)->num_tuples = res_pos;
     }
 
     // We use the pos indicated in the res.
@@ -788,19 +994,10 @@ status col_scan(comparator* f, column* col, result** r)
                 (*r)->payload[res_pos++] = pos[ii];
             }
         }
-        (*r)->num_tuples = res_pos;
     }
-
+    (*r)->num_tuples = res_pos;
     ret.code = OK;
     return ret;
-}
-
-status index_scan(comparator* f, column* col, result** r)
-{
-    (void) f;
-    (void) col;
-    (void) r;
-    return global;
 }
 
 
