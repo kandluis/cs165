@@ -38,6 +38,15 @@ typedef enum DataType {
      // Others??
 } DataType;
 
+
+// We just have a simple vector structure (really an array) that let's us keep
+// track of the size and current allocation.
+typedef struct Vector {
+    int* data;
+    size_t index;
+    size_t size;
+} Vector;
+
 /**
  * IndexType
  * Flag to identify index type. Defines an enum for the different possible column indices.
@@ -448,6 +457,7 @@ status cluster_table(table* tbl);
 
 status insert(column *col, Data data);
 status insert_pos(column* col, size_t pos, Data data);
+size_t find_pos(column* col, Data data);
 status delete(column *col, int *pos);
 status update(column *col, int *pos, int new_val);
 status fetch(column *col, column *pos, result **r);

@@ -281,7 +281,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
                             // We use a SortedIndex except we don't need to copy the data
                             // because we sort it in place.
-                            SortedIndex index = calloc(1, sizeof(SortedIndex));
+                            SortedIndex* index = calloc(1, sizeof(SortedIndex));
                             col1->index->index = index;
                             index->data = col1;
                             index->pos = NULL; // Cluster index has pos null.
@@ -290,7 +290,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                             tbl1->cluster_column = col1;
                         }
                     }
-                    else if (strcmp(sorting_str), "btree") == 0)) {
+                    else if (strcmp(sorting_str, "btree") == 0) {
                         col1->index = calloc(1, sizeof(struct  column_index));
                         if (!col1->index) {
                              log_err("Index creation failed. %s: error at line %d\n",
@@ -306,6 +306,9 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                             // TODO(luisperez): Deal with the btree
                             // col1->index->index = init_btree();
                         }
+                    }
+                    else if (strcmp(sorting_str, "unsorted") == 0) {
+                        col1->index = NULL;
                     }
                     else {
                         log_err("Index of type %s is currently not supported.\n", sorting_str);
@@ -773,7 +776,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
         // We have an index, check to see if b_tree or sorted.
         else if (vec_val->index->type == SORTED) {
-            SortedIndex idx = vec_val->index->index;
+            SortedIndex* idx = vec_val->index->index;
             if (strcmp(fun_str, "min") == 0) {
                 *res =  idx->pos->data[0];
             }

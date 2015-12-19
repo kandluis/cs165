@@ -81,7 +81,7 @@ char* execute_db_operator(db_operator* query) {
         table* tbl = query->tables[0];
 
         // If we don't have a clustered column, we can just insert at the end.
-        size_t inser_pos = tbl->col[0]->count - 1;
+        size_t ipos = tbl->col[0]->count - 1;
         if (tbl->cluster_column) {
             // Determine the position at which to insert based on clustering
             column* col = tbl->cluster_column;
@@ -89,22 +89,23 @@ char* execute_db_operator(db_operator* query) {
                 log_err("No index on clustered column!?");
             }
             else {
+
                 // Find the value which we wish to insert!
-                size_t col_index;
+                size_t col_index = 0;
                 for (size_t i = 0; i < tbl->col_count; i++) {
                     if (col == tbl->col[i]) {
                         col_index = i;
                         break;
                     }
                 }
-                inser_pos = find_pos(col, query->value1[col_index]);
+                ipos = find_pos(col, query->value1[col_index]);
             }
         }
 
         // Iterate over the columns and insert the values
         for(size_t i = 0; i < tbl->col_count; i++) {
             // Keep clustering by inserting into the appropriate positions.
-            status s = insert_pos(query->columns[i], insert_pos, query->value1[i]);
+            status s = insert_pos(query->columns[i], ipos, query->value1[i]);
             if (s.code == ERROR) {
                 ret = s.error_message;
                 break;
@@ -247,6 +248,7 @@ void load_data(int client_socket, message* recv_message){
     cols[0] = get_resource(strtok(buffer, ","));
     if (!cols[0]) {
         log_err("Resource not found. Column name invalid: %s.", buffer);
+        return;
     }
     for (int i = 1; i < ncol; i++) {
         cols[i] = get_resource(strtok(NULL, ","));
