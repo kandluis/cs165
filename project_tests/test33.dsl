@@ -1,4 +1,4 @@
--- Needs test08.dsl and test29.dsl to have been executed first.
+-- Needs test08.dsl,test29.dsl and test33.dsl to have been executed first.
 -- Correctness test: Delete values and run a simple query
 -- 
 -- DELETE FROM tbl2 WHERE col1 = -10;
