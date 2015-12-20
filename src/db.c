@@ -1,6 +1,7 @@
 // Copyright 2015 <Luis Perez>
 
 #include <assert.h>
+#include <string.h>
 
 #include "db.h"
 #include "include/b_tree.h"
@@ -44,11 +45,13 @@ status create_db(const char* db_name, db** db) {
 // Loads the data belong to tbl into table. tbl must have all parameters set
 // except the columns, which are loaded here.
 // Metadata is a file ponter to the metadata file.
-status load_table(FILE* metadata, table* tbl) {
+status load_table(FILE* metadata, table* tbl, char* cluster_column) {
+    (void) cluster_column;
     // Allocate space for the columns
     tbl->col = calloc(1, sizeof(struct column*) * tbl->table_size);
 
     char buffer[DEFAULT_ARRAY_SIZE];
+    char buffer2[DEFAULT_ARRAY_SIZE];
 
     // Read in each column.
     FILE* fp;
@@ -56,8 +59,9 @@ status load_table(FILE* metadata, table* tbl) {
     for (size_t i = 0; i < tbl->table_size; i++) {
         column* col = calloc(1, sizeof(struct column));
         if (fscanf(metadata,
-            (i < tbl->table_size - 1) ? " %s %zu " : " %s %zu\n",
-            buffer, &col->count) != 2) {
+            // Read column_name size index
+            (i < tbl->table_size - 1) ? " %s %zu %s " : " %s %zu %s\n",
+            buffer, &col->count, buffer2) != 2) {
             log_err("Could not read from metadata file for column loading");
             ret.code = ERROR;
             ret.error_message = "Could read file.\n";
@@ -66,7 +70,7 @@ status load_table(FILE* metadata, table* tbl) {
         col->size = col->count;
         col->name = copystr(buffer);
 
-        // Read in the data!
+        // Read in the data! We do this for all indexes!
         col->data = calloc(col->size, sizeof(Data));
         sprintf(buffer, "%s/%s.data", DATA_FOLDER, col->name);
         fp = fopen(buffer, "rb");
@@ -82,6 +86,46 @@ status load_table(FILE* metadata, table* tbl) {
             ret.error_message = "Could not read data.\n";
             fclose(fp);
             return ret;
+        }
+
+        // Read in the index data!
+        if (strcmp(buffer2, "sorted" ) == 0) {
+            col->index = calloc(1, sizeof(column_index));
+            col->index->type = SORTED;
+            SortedIndex* idx = calloc(1, sizeof(SortedIndex));
+            // Read sorted values
+            idx->data = calloc(col->count, sizeof(Data));
+            if (col->count != fread(idx->data, sizeof(Data), col->count, fp)) {
+                log_err("Could not read columnar file data %s.\n", buffer);
+                ret.code = ERROR;
+                ret.error_message = "Could not read data.\n";
+                fclose(fp);
+                free(idx);
+                return ret;
+            }
+
+            // Read positions mappings
+            idx->pos = calloc(col->count, sizeof(Data));
+            if (col->count != fread(idx->pos, sizeof(Data), col->count, fp)) {
+                log_err("Could not read columnar file data %s.\n", buffer);
+                ret.code = ERROR;
+                ret.error_message = "Could not read data.\n";
+                fclose(fp);
+                free(idx);
+                return ret;
+            }
+            col->index->index = idx;
+
+        }
+        else if (strcmp(buffer2, "btree") == 0) {
+            col->index = calloc(1, sizeof(column_index));
+            col->index->type = B_PLUS_TREE;
+            col->index->index = calloc(1, sizeof(Node));
+            read_tree(fp, col->index->index);
+        }
+        // No index!
+        else {
+            col->index = NULL;
         }
 
         // Add the column to the variable pool
@@ -130,8 +174,7 @@ status open_db(const char* filename, db** db, OpenFlags flags)
         table* tbl = calloc(1, sizeof(struct table));
 
         // Read in the table name and column count
-        if (fscanf(mfile,
-            (i < (*db)->table_count - 1) ? " %s %zu " : " %s %zu\n",
+        if (fscanf(mfile, " %s %zu ",
             buffer, &tbl->col_count) != 2) {
             ret.code = ERROR;
             ret.error_message = "Could not read metadata.";
@@ -142,8 +185,18 @@ status open_db(const char* filename, db** db, OpenFlags flags)
         tbl->table_size = tbl->col_count;
         tbl->name = copystr(buffer);
 
+        // Read in the cluster index name!
+        if (fscanf(mfile, " %s ", buffer) != 1) {
+            ret.code = ERROR;
+            ret.error_message = "Could not read metadata.";
+            log_err(ret.error_message);
+            free(tbl);
+            fclose(mfile);
+            return ret;
+        }
+
         // Read the rest of the line for this table!
-        status s = load_table(mfile, tbl);
+        status s = load_table(mfile, tbl, buffer);
         if (s.code != OK) {
             fclose(mfile);
             free(tbl);
@@ -269,6 +322,7 @@ status sync_db(db* db) {
 
     // Iterate over the tables!
     for (size_t i = 0; i < db->table_count; i++){
+        // Write out the table name and the column count
         if (fprintf(mfile, "%s %zu ", db->tables[i]->name, db->tables[i]->col_count) < 0) {
             log_err("Unable write to file %s\n", fname);
             s.code = ERROR;
@@ -276,7 +330,7 @@ status sync_db(db* db) {
             fclose(mfile);
             return s;
         }
-        // Write out the name of the cluster column, if an
+        // Write out the name of the cluster column, if any
         if (db->tables[i]->cluster_column) {
             if (fprintf(mfile, "%s ", db->tables[i]->cluster_column->name) > 0) {
                 log_err("Unable write to file %s\n", fname);
@@ -313,6 +367,7 @@ status sync_db(db* db) {
                     log_err("Unsupported persistence type for index!.");
                 }
             }
+            // Write out column_name size index
             if (fprintf(mfile, "%s %zu %s ", db->tables[i]->col[j]->name,
                 db->tables[i]->col[j]->count, index) < 0) {
                 log_err("Unable to write to file %s\n", fname);
