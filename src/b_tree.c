@@ -52,14 +52,14 @@ void bulk_load(Data* data, Data* pos, size_t n, Node* root) {
     // Add a link from the previous child (unless first child)
     if (i != 0 ) {
       // This links all the children internally together.
-      root->children[i-1].next_link = root->children;
+      root->children[i-1].next_link = &root->children[i];
 
       // Node link the contiguous chunks together by linking the last from the
       // previous group to the first of this group!
       if (root->children[i-1].children) {
 
         // Get the last one in the previous contiguous block!
-        root->children[i-1].children[FANOUT - 1].next_link = root->children[i].children;
+        root->children[i-1].children[root->children[i-1].count - 1].next_link = root->children[i].children;
       }
     }
   }
@@ -260,4 +260,63 @@ void insert_tree(Node* root, Data key, Data value) {
     return;
   }
 
+}
+
+void write_tree(FILE* fp, Node* root) {
+  // Write out everything in binary as a struct!
+  if (1 != fwrite(root, sizeof(Node), 1, fp)) {
+    log_err("Failed at writing out node!!");
+  }
+
+  // Write out the pointers depending on type!
+  if (root->type == Leaf) {
+    if (1 != fwrite(root, sizeof(Node), 1, fp)) {
+      log_err("Failed writing out values for leaf!");
+    }
+  }
+  // Type is Internal!
+  else if (root->type == Internal) {
+    for (size_t i = 0; i < root->count; i++) {
+      write_tree(fp, &root->children[i]);
+    }
+  }
+  else {
+    log_err("Node type not supported!");
+  }
+}
+
+void read_tree(FILE* fp, Node* root) {
+  // Read in the node
+  if (1 != fread(root, sizeof(Node), 1, fp)) {
+    log_err("Unable to read root node!");
+  }
+
+  // Check to see if it's a leaf node
+  if (root->type == Leaf) {
+    root->children = calloc(1, sizeof(Node));
+    if (1 != fread(root->children, sizeof(Node*), 1, fp)) {
+      log_err("Unable to read children node!");
+    }
+  }
+  else if (root->type == Internal) {
+    root->children = calloc(FANOUT, sizeof(Node));
+    for (size_t i = 0; i < root->count; i++) {
+      read_tree(fp, &root->children[i]);
+
+      // Let's link all the children together!
+      if (i != 0) {
+        root->children[i-1].next_link = root->children;
+      }
+
+      // And let's link contiguous groups together
+      if (root->children[i-1].children) {
+        // Get the last one in the previous continguous chunk
+        root->children[i-1].children[root->children[i-1].count - 1].next_link = root->children[i].children;
+      }
+    }
+  }
+
+  else {
+    log_err("Node type is unsupported.");
+  }
 }

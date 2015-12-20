@@ -67,4 +67,14 @@ distclean: clean
 
 test08: ./client < ../project_tests/test08.dsl
 
+test09: ./client < ../project_tests/test08.dsl
+
+test10: ./client < ../project_tests/test08.dsl
+
+test11: ./client < ../project_tests/test08.dsl
+
+test12: ./client < ../project_tests/test08.dsl
+
+test13: ./client < ../project_tests/test08.dsl
+
 .PHONY: all clean distclean

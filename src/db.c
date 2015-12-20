@@ -192,6 +192,49 @@ status sync_table(table* tbl){
             return s;
         }
 
+        // If we have an index, write it out!
+        if (tbl->col[i]->index) {
+            if (tbl->col[i]->index->type == B_PLUS_TREE) {
+                Node* idx = tbl->col[i]->index->index;
+                write_tree(data, idx);
+
+                free_btree(idx);
+                free(idx);
+            }
+            else if (tbl->col[i]->index->type == SORTED) {
+                // Write out the SortedIndex
+                SortedIndex* idx = tbl->col[i]->index->index;
+
+                if (tbl->col[i]->count != fwrite(idx->data, sizeof(Data), tbl->col[i]->count, data)) {
+                    s.code = ERROR;
+                    s.error_message = "Could not write data to file!";
+                    log_err("Could not write data to file!");
+                    fclose(data);
+                    return s;
+                }
+
+                if (tbl->col[i]->count != fwrite(idx->pos, sizeof(Data), tbl->col[i]->count, data)) {
+                    s.code = ERROR;
+                    s.error_message = "Could not write data to file!";
+                    log_err("Could not write data to file!");
+                    fclose(data);
+                    return s;
+                }
+
+
+                // Free the structure.
+                free(idx->pos);
+                free(idx->data);
+                free(idx);
+            }
+            else {
+                log_err("Unsupported index type for permission");
+            }
+
+
+            free(tbl->col[i]->index);
+        }
+
         // Free the column.
         free(tbl->col[i]->name);
         free(tbl->col[i]->data);
@@ -233,10 +276,45 @@ status sync_db(db* db) {
             fclose(mfile);
             return s;
         }
+        // Write out the name of the cluster column, if an
+        if (db->tables[i]->cluster_column) {
+            if (fprintf(mfile, "%s ", db->tables[i]->cluster_column->name) > 0) {
+                log_err("Unable write to file %s\n", fname);
+                s.code = ERROR;
+                s.error_message = "Unable to write to file";
+                fclose(mfile);
+                return s;
+            }
+        }
+        else {
+            if (fprintf(mfile, "%s ", "null") > 0) {
+                log_err("Unable write to file %s\n", fname);
+                s.code = ERROR;
+                s.error_message = "Unable to write to file";
+                fclose(mfile);
+                return s;
+            }
+        }
+
         // Write out the column names for the table
         for(size_t j = 0; j < db->tables[i]->col_count - 1; j++) {
-            if (fprintf(mfile, "%s %zu ", db->tables[i]->col[j]->name,
-                db->tables[i]->col[j]->count) < 0) {
+            char* index;
+            if (!db->tables[i]->col[j]->index) {
+                index = "unsorted";
+            }
+            else {
+                if (db->tables[i]->col[j]->index->type == SORTED) {
+                    index = "sorted";
+                }
+                else if (db->tables[i]->col[j]->index->type == B_PLUS_TREE) {
+                    index = "btree";
+                }
+                else {
+                    log_err("Unsupported persistence type for index!.");
+                }
+            }
+            if (fprintf(mfile, "%s %zu %s ", db->tables[i]->col[j]->name,
+                db->tables[i]->col[j]->count, index) < 0) {
                 log_err("Unable to write to file %s\n", fname);
                 s.code = ERROR;
                 s.error_message = "Unable to write to file!\n";
@@ -244,10 +322,25 @@ status sync_db(db* db) {
                 return s;
             }
         }
+        char* index;
+        if (!db->tables[i]->col[db->tables[i]->col_count - 1]->index) {
+            index = "unsorted";
+        }
+        else {
+            if (db->tables[i]->col[db->tables[i]->col_count - 1]->index->type == SORTED) {
+                index = "sorted";
+            }
+            else if (db->tables[i]->col[db->tables[i]->col_count - 1]->index->type == B_PLUS_TREE) {
+                index = "btree";
+            }
+            else {
+                log_err("Unsupported persistence type for index!.");
+            }
+        }
         // Last one is written with a newline
-        if (fprintf(mfile, "%s %zu\n",
+        if (fprintf(mfile, "%s %zu %s\n",
             db->tables[i]->col[db->tables[i]->col_count - 1]->name,
-            db->tables[i]->col[db->tables[i]->col_count - 1]->count) < 0) {
+            db->tables[i]->col[db->tables[i]->col_count - 1]->count, index) < 0) {
             log_err("Unable to write to file %s\n", fname);
             s.error_message = "Unable to write to file";
             s.code = ERROR;

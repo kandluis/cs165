@@ -10,6 +10,7 @@
 #define SRC_INCLUDE_B_TREE_H_
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "cs165_api.h"
 
@@ -122,5 +123,11 @@ void free_btree(Node* root);
 
 // Insert a key-value pair into a b-tree. Try to keep it balanced!
 void insert_tree(Node* root, Data key, Data value);
+
+// Writes a tree to disk.
+void write_tree(FILE* fp, Node* root);
+
+// Reads a tree from disk. Stores the root node in the node pointed to by root.
+void read_tree(FILE* fp, Node* root);
 
 #endif  // SRC_INCLUDE_B_TREE_H_

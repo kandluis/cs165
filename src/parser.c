@@ -1246,7 +1246,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
             for (size_t i = 0; i < databases.count; i++) {
                 db* db = (struct db*)(databases.data[i]);
-                fprintf(mfile, " %s %zu\n", db->name, db->table_count);
+                fprintf(mfile, "%s %zu\n", db->name, db->table_count);
                 status s = sync_db(db);
                 if (s.code != OK) {
                     log_err("Unable to store database %s", db->name);
