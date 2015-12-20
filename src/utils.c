@@ -63,3 +63,43 @@ char* copystr(const char* src) {
     return strcpy(tmp, src);
 }
 
+size_t find_index(Data* array, size_t start, size_t end, Data el, size_t size) {
+    // If only one element or if we've found the element.
+    size_t mid = start + end / 2;
+    if (start == end || el.i == array[mid].i) {
+        // We can insert here because they are equal.
+        if (array[start].i == el.i) {
+            return start;
+        }
+        // Search before until we hit bottom or find element smaller.
+        else if (el.i < array[start].i) {
+            while (start != 0) {
+                if (array[--start].i <= el.i) {
+                    return start + 1;
+                }
+            }
+
+            // Insert at the beginning of the array (so BAD!)
+            return start;
+        }
+        // Search after until we hit top or find element larger
+        else {
+            while (start != size) {
+                if (array[++start].i >= el.i) {
+                    return start;
+                }
+            }
+            // Insert at the end!
+            return size;
+        }
+    }
+
+    // Now we handle the recursive case!
+    if (el.i < array[mid].i) {
+        return find_index(array, start, (mid - 1 > start) ? mid - 1 : start, el, size);
+    }
+    else { // el.i > array[mid].i
+        return find_index(array, (mid + 1 < end) ? mid + 1 : end, end, el, size);
+    }
+}
+

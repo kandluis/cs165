@@ -10,6 +10,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "cs165_api.h"
+
 #define TERMINATE_LOAD "EOF"
 #define SHUTDOWN_MESSAGE "SHUTDOWN"
 
@@ -48,5 +50,11 @@ void* resize(void* data, size_t osize, size_t nsize);
 // freeing the memory at the return pointer location.
 char* copystr(const char* src);
 
+// Binary searches the array for the given element and returns
+// the index at which it should be inserted to maintain sorted order.
+// The array is restricted to [start,end] (inclusive).
+// Last parameter is the total size of th ENTIRE array
+// Returns the smallest index possible for insertion to mainted sortedness.
+size_t find_index(Data* array, size_t start, size_t end, Data el, size_t size);
 
 #endif /* __UTILS_H__ */

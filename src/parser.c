@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "db.h"
+#include "include/b_tree.h"
 #include "include/common.h"
 #include "include/var_store.h"
 
@@ -300,11 +301,10 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
                         }
                         else {
                             col1->index->type = B_PLUS_TREE;
-
+                            Node* root = calloc(1, sizeof(Node));
+                            col1->index->index = root;
                             // The table is clustered on this column
-                            // tbl1->cluster_column = col1;
-                            // TODO(luisperez): Deal with the btree
-                            // col1->index->index = init_btree();
+                            tbl1->cluster_column = col1;
                         }
                     }
                     else if (strcmp(sorting_str, "unsorted") == 0) {
@@ -673,8 +673,23 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             }
         }
         else if (vec_val->index->type == B_PLUS_TREE) {
-            // TODO!
-            log_err("Do not support b trees yet");
+            Node* root = vec_val->index->index;
+            if (strcmp(fun_str, "min") == 0) {
+                // Access the sorted data and return the first value.
+                *res = get_min_key(root);
+            }
+            else if (strcmp(fun_str, "max") == 0) {
+                // Access the sorted data and return the last value
+                *res = get_max_key(root);
+            }
+            else {
+                ret.error_message = "Unsupported operation.\n";
+                ret.code = ERROR;
+                log_err(ret.error_message);
+                free(str_cpy);
+                free(res);
+                return ret;
+            }
         }
         // Unsupported index!
         else {
@@ -793,8 +808,21 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
             }
         }
         else if (vec_val->index->type == B_PLUS_TREE) {
-            // TODO!
-            log_err("Do not support b trees yet");
+            Node* root = vec_val->index->index;
+            if (strcmp(fun_str, "min") == 0) {
+                *res =  get_min_value(root);
+            }
+            else if (strcmp(fun_str, "max") == 0) {
+                *res = get_max_value(root);
+            }
+            else {
+                ret.error_message = "Unsupported operation.\n";
+                ret.code = ERROR;
+                log_err(ret.error_message);
+                free(str_cpy);
+                free(res);
+                return ret;
+            }
         }
         // Unsupported index!
         else {

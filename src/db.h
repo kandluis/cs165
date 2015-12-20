@@ -10,5 +10,6 @@
 // should only be called on a column that has already been clustered.
 // In our case, we only support BTrees and SortedIndex.
 status recluster(table* tbl, IndexType type);
+status recluster_col(column* col, IndexType type);
 
 #endif // DB_H__

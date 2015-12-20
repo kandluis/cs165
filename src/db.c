@@ -403,6 +403,7 @@ status create_column(table* table, const char* name, column** col)
     return s;
 }
 
+// TOOD(luisperez): Currently unused!
 status create_index(column* col, IndexType type)
 {
     if (type == SORTED) {
@@ -508,57 +509,74 @@ column* copycolumn(column* col) {
     return res;
 }
 
-status recluster(table* tbl, IndexType newtype) {
-    // Let's recluster only if the current type does not match the new type.
+// Reclusters a single column.
+status recluster_col(column* col, IndexType newtype) {
     status ret;
-    if (tbl->cluster_column->index->type != newtype) {
-        if (newtype == SORTED) {
-            // We had a btree before and now we want... sorted data?
-            log_err("Unimplemented btree to sorted conversion. %s: line %d.\n",
-                __func__, __LINE__);
-            ret.code = ERROR;
-            ret.error_message = "Unimplemented.\n";
-            return ret;
-        }
-        else if (newtype == B_PLUS_TREE) {
-            // TODO create a bplus tree!
-            log_err("Unimplemented sorted to btree conversion.");
-            ret.code = ERROR;
-            ret.error_message = "Unimplemented.\n";
-            return ret;
-        }
-        else {
-            log_err("Unsupported index type! Cannot recluster");
-            ret.code = ERROR;
-            ret.error_message = "Unsupported index type!\n";
-            return ret;
-        }
+    if (newtype == SORTED) {
+        Node* idx = col->index->index;
+
+        // Create the new SortedIndex
+        SortedIndex* idx2 = calloc(1, sizeof(SortedIndex));
+        idx2->data = calloc(1, sizeof(struct column));
+        idx2->data->data = calloc(col->count, sizeof(Data));
+        idx2->pos = calloc(1, sizeof(struct column));
+        idx2->pos->data = calloc(col->count, sizeof(Data));
+
+        extract_data(idx, idx2->data->data, idx2->pos->data);
+
+        // Free the tree
+        free_btree(idx);
+        free(idx);
+
+        // Set the new index
+        col->index->index = idx2;
+        col->index->type = SORTED;
+
+        ret.code = OK;
+        return ret;
+    }
+    else if (newtype == B_PLUS_TREE) {
+        // TODO create a bplus tree!
+        // We we just need to create a btree on the sorted data.
+        SortedIndex* idx = col->index->index;
+
+        Node* root = calloc(1, sizeof(Node));
+        bulk_load(idx->data->data, idx->pos->data, idx->data->count, root);
+
+        // Free the results
+        free(idx->data->data);
+        free(idx->data);
+        free(idx->pos->data);
+        free(idx->pos);
+        free(idx);
+
+        // Reset the parameters.
+        col->index->index = root;
+        col->index->type = B_PLUS_TREE;
+        ret.code = OK;
+        return ret;
+    }
+    else {
+        log_err("Unsupported index type! Cannot recluster");
+        ret.code = ERROR;
+        ret.error_message = "Unsupported index type!\n";
+        return ret;
     }
 
-    ret.code = OK;
     return ret;
+}
+
+status recluster(table* tbl, IndexType newtype) {
+    // Let's recluster only if the current type does not match the new type.
+    return recluster_col(tbl->cluster_column, newtype);
 }
 
 // We add secondary index to the column.
 status create_secondary_index(column* col, IndexType type) {
     status ret;
-    // Free any previous indexes based on type.
+    // If we have a previous index, then we recluster!
     if (col->index) {
-        if (col->index->type == SORTED) {
-            SortedIndex* idx = col->index->index;
-            free(idx->data);
-            free(idx->pos);
-            free(idx);
-        }
-        else if (col->index->type == B_PLUS_TREE) {
-            // TODO(luisperez): Free a btree
-            free(col->index->index);
-        }
-        else {
-            // We still free it, but don't know it's type.
-            free(col->index->index);
-            log_err("Invalid index detected. %s, line %d\n", __func__, __LINE__);
-        }
+        return recluster_col(col, type);
     }
 
     // Allocate space for the index if non-existent
@@ -587,7 +605,9 @@ status create_secondary_index(column* col, IndexType type) {
     else if (type == B_PLUS_TREE) {
         // And now we bulk load into a B_Tree!
         col->index->type = B_PLUS_TREE;
-        col->index->index = bulk_load(data->data, pos->data, data->count);
+        Node* root = calloc(1, sizeof(Node));
+        bulk_load(data->data, pos->data, data->count, root);
+        col->index->index = root;
 
         // We can free because the data was copied into the btree
         free(pos->data);
@@ -651,61 +671,22 @@ status cluster_table(table* tbl) {
     return s;
 }
 
-
-// Binary searches the array for the given element and returns
-// the index at which it should be inserted to maintain sorted order.
-// The array is restricted to [start,end] (inclusive).
-// Last parameter is the total size of th ENTIRE array
-// Returns the smallest index possible for insertion to mainted sortedness.
-size_t find_index(Data* array, size_t start, size_t end, Data el, size_t size) {
-    // If only one element or if we've found the element.
-    size_t mid = start + end / 2;
-    if (start == end || el.i == array[mid].i) {
-        // We can insert here because they are equal.
-        if (array[start].i == el.i) {
-            return start;
-        }
-        // Search before until we hit bottom or find element smaller.
-        else if (el.i < array[start].i) {
-            while (start != 0) {
-                if (array[--start].i <= el.i) {
-                    return start + 1;
-                }
-            }
-
-            // Insert at the beginning of the array (so BAD!)
-            return start;
-        }
-        // Search after until we hit top or find element larger
-        else {
-            while (start != size) {
-                if (array[++start].i >= el.i) {
-                    return start;
-                }
-            }
-            // Insert at the end!
-            return size;
-        }
-    }
-
-    // Now we handle the recursive case!
-    if (el.i < array[mid].i) {
-        return find_index(array, start, (mid - 1 > start) ? mid - 1 : start, el, size);
-    }
-    else { // el.i > array[mid].i
-        return find_index(array, (mid + 1 < end) ? mid + 1 : end, end, el, size);
-    }
-}
-
 // Find the position on which we insert the value. Column must be indexed.
+// Column is also expected to be the clustered index, so we return the
+// index for the clustered table!
 size_t find_pos(column* col, Data data) {
+    if (!col->index->index) {
+        log_err("No index exists for col %s. %s, line %d\n",
+            col->name, __func__, __LINE__);
+        return -1;
+    }
     if (col->index->type == SORTED) {
-        return find_index(col->data, 0, col->count - 1, data, col->count - 1);
+        SortedIndex* idx = col->index->index;
+        return find_index(idx->data->data, 0, col->count - 1, data, col->count - 1);
     }
     else if (col->index->type == B_PLUS_TREE) {
-        // TOOD(luisperez): Find the position to insert into using the
-        // tree.
-        return col->count - 1;
+        Node* tmp;
+        return find_element_tree(data, col->index->index, &tmp);
     }
     else {
         log_err("Unsupported index type on cluster column.");
@@ -713,7 +694,7 @@ size_t find_pos(column* col, Data data) {
     }
 }
 
-// Inserts datume into arr at the specified location. Returns size array.
+// Inserts datum into arr at the specified location. Returns size array.
 status insert_into_column(column* col, Data datum, size_t pos) {
     status ret;
     if (col->count >= col->size) {
@@ -748,6 +729,7 @@ status insert_into_column(column* col, Data datum, size_t pos) {
         datum = tmp;
     }
     col->data[col->count++] = datum;
+
     ret.code = OK;
     return ret;
 }
@@ -763,8 +745,7 @@ status insert_pos(column *col, size_t pos, Data data) {
 
     // We've added a new element, now update the index if necessary
     // We have an index with allocated index space and we are not a cluster column.
-    if (col->index && col->index->index && col) {
-        // TODO(luisperez): Currently only support sorted indexes
+    if (col->index && col->index->index) {
         if (col->index->type == SORTED) {
             SortedIndex* idx = (SortedIndex*) col->index->index;
             // We only need to do stuff for an unclustered column
@@ -783,6 +764,22 @@ status insert_pos(column *col, size_t pos, Data data) {
                 d.i = pos;
                 ret = insert_into_column(idx->pos, d, sorted_pos);
             }
+        }
+        else if (col->index->type == B_PLUS_TREE) {
+            Node* idx = (Node*) col->index->index;
+            // TODO(luisperez): Be efficient and only keep one copy of the
+            // data in the btree for the cluster column on the table.
+            // However, we currently do not do this!
+            Data d;
+            d.i = pos;
+            insert_tree(idx, data, d);
+        }
+        else {
+            log_err("Index type is not supported! %s: line %d.\n",
+                __func__, __LINE__);
+            ret.code = ERROR;
+            ret.error_message = "Unsupported index type";
+            return ret;
         }
     }
     return ret;
