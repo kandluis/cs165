@@ -23,6 +23,8 @@ void bulk_load(Data* data, Data* pos, size_t n, Node* root) {
       root->children->keys[i] = pos[i];
       root->keys[i] = data[i];
     }
+
+    return;
   }
 
   // Otherwise split the data by children and bulk load them first.

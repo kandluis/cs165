@@ -1,8 +1,8 @@
 -- Test for creating table with indexes
 --
--- Table tbl2 has a clustered index with col7 being the leading column. 
--- The clustered index has the form of a sorted column. 
--- The table also has two secondary indexes on col1 and col2; both secondary indexes are b-trees. 
+-- Table tbl2 has a clustered index with col7 being the leading column.
+-- The clustered index has the form of a sorted column.
+-- The table also has two secondary indexes on col1 and col2; both secondary indexes are b-trees.
 --
 -- Loads data from: data1.csv
 --
@@ -19,11 +19,11 @@ create(col,"col7",db1.tbl2,sorted)
 --
 --
 -- Load data immediately in the form of a clustered index
-load("data1.csv")
+load("../project_tests/data1.csv")
 --
 -- Create two secondary indexes on col1 and col2 - They are expected to get bulk loaded with all the data we have already.
 create(idx,db1.tbl2.col1,btree)
 create(idx,db1.tbl2.col2,btree)
 --
 -- Testing that the data and their indexes are durable on disk.
-shutdown
+-- shutdown

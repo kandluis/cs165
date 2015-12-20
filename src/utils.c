@@ -65,7 +65,7 @@ char* copystr(const char* src) {
 
 size_t find_index(Data* array, size_t start, size_t end, Data el, size_t size) {
     // If only one element or if we've found the element.
-    size_t mid = start + end / 2;
+    size_t mid = (start + end) / 2;
     if (start == end || el.i == array[mid].i) {
         // We can insert here because they are equal.
         if (array[start].i == el.i) {

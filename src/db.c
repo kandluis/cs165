@@ -906,19 +906,19 @@ status index_scan(comparator* f, column* col, result** r, Data* pos)
 
     // We assume only the first two relevant matter.
     while (f) {
-        if (f->type == GREATER_THAN && min_index == 0) {
+        if (f->type == LESS_THAN && min_index == 0) {
+            Data max;
+            max.i = f->p_val;
+            max_index = find_index(sorted->data->data, 0, sorted->data->count - 1,
+                max, sorted->data->count);
+
+            // This is the index for the sorted data!
+        }
+        else if (f->type == (GREATER_THAN | EQUAL) && max_index == col->count - 1) {
             Data min;
             min.i = f->p_val;
             min_index = find_index(sorted->data->data, 0, sorted->data->count - 1,
                 min, sorted->data->count);
-
-            // This is the index for the sorted data!
-        }
-        else if (f->type == (LESS_THAN | EQUAL) && max_index == col->count - 1) {
-            Data max;
-            max.i = f->p_val;
-            max_index = find_index(sorted->data->data, 0, sorted->data->count - 1, max,
-                sorted->data->count);
         }
         f = f->next_comparator;
     }
@@ -927,9 +927,18 @@ status index_scan(comparator* f, column* col, result** r, Data* pos)
     if (!pos) {
         // Clustered.
         if (!sorted->pos || sorted->data == col) {
-            for(size_t i = min_index; i < max_index; i++) {
-                // Return the clustered position index.
-                (*r)->payload[res_pos++] = sorted->pos->data[i];
+            // Special case when we are running a scan over the clustered column.
+            if (!sorted->pos) {
+                for(size_t i = min_index; i < max_index; i++) {
+                    // Return the clustered position index.
+                    (*r)->payload[res_pos++].i = i;
+                }
+            }
+            else {
+                for(size_t i = min_index; i < max_index; i++) {
+                    // Return the clustered position index.
+                    (*r)->payload[res_pos++] = sorted->pos->data[i];
+                }
             }
         }
     }

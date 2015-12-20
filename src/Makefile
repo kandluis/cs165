@@ -65,4 +65,6 @@ clean:
 distclean: clean
 	rm -rf $(DEPSDIR)
 
+test08: ./client < ../project_tests/test08.dsl
+
 .PHONY: all clean distclean
