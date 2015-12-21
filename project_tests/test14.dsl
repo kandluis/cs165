@@ -1,7 +1,7 @@
 -- Test for creating table with indexes
 --
--- Table tbl3 has a clustered index with col4 being the leading column. 
--- The clustered index has the form of a b-tree. 
+-- Table tbl3 has a clustered index with col4 being the leading column.
+-- The clustered index has the form of a b-tree.
 -- The table also has two secondary indexes on col1 and col3; the secondary indexy on col1 has the form of a sorted column and the secondary index on col3 has the form of a b-tree.
 --
 -- Loads data from: data2.csv
@@ -26,5 +26,5 @@ create(idx,db1.tbl3.col3,btree)
 create(idx,db1.tbl3.col4,btree)
 --
 --
--- Load data in the clustered index and populate all secondary indexes as well. 
+-- Load data in the clustered index and populate all secondary indexes as well.
 load("data2.csv")
