@@ -46,7 +46,6 @@ status create_db(const char* db_name, db** db) {
 // except the columns, which are loaded here.
 // Metadata is a file ponter to the metadata file.
 status load_table(FILE* metadata, table* tbl, char* cluster_column) {
-    (void) cluster_column;
     // Allocate space for the columns
     tbl->col = calloc(1, sizeof(struct column*) * tbl->table_size);
 
@@ -61,7 +60,7 @@ status load_table(FILE* metadata, table* tbl, char* cluster_column) {
         if (fscanf(metadata,
             // Read column_name size index
             (i < tbl->table_size - 1) ? " %s %zu %s " : " %s %zu %s\n",
-            buffer, &col->count, buffer2) != 2) {
+            buffer, &col->count, buffer2) != 3) {
             log_err("Could not read from metadata file for column loading");
             ret.code = ERROR;
             ret.error_message = "Could read file.\n";
@@ -93,26 +92,32 @@ status load_table(FILE* metadata, table* tbl, char* cluster_column) {
             col->index = calloc(1, sizeof(column_index));
             col->index->type = SORTED;
             SortedIndex* idx = calloc(1, sizeof(SortedIndex));
-            // Read sorted values
-            idx->data = calloc(col->count, sizeof(Data));
-            if (col->count != fread(idx->data, sizeof(Data), col->count, fp)) {
-                log_err("Could not read columnar file data %s.\n", buffer);
-                ret.code = ERROR;
-                ret.error_message = "Could not read data.\n";
-                fclose(fp);
-                free(idx);
-                return ret;
-            }
+            // Read sorted values only when not the cluster
+            if (strcmp(col->name, cluster_column) != 0) {
+                idx->data = calloc(col->count, sizeof(Data));
+                if (col->count != fread(idx->data, sizeof(Data), col->count, fp)) {
+                    log_err("Could not read columnar file data %s.\n", buffer);
+                    ret.code = ERROR;
+                    ret.error_message = "Could not read data.\n";
+                    fclose(fp);
+                    free(idx);
+                    return ret;
+                }
 
-            // Read positions mappings
-            idx->pos = calloc(col->count, sizeof(Data));
-            if (col->count != fread(idx->pos, sizeof(Data), col->count, fp)) {
-                log_err("Could not read columnar file data %s.\n", buffer);
-                ret.code = ERROR;
-                ret.error_message = "Could not read data.\n";
-                fclose(fp);
-                free(idx);
-                return ret;
+                // Read positions mappings
+                idx->pos = calloc(col->count, sizeof(Data));
+                if (col->count != fread(idx->pos, sizeof(Data), col->count, fp)) {
+                    log_err("Could not read columnar file data %s.\n", buffer);
+                    ret.code = ERROR;
+                    ret.error_message = "Could not read data.\n";
+                    fclose(fp);
+                    free(idx);
+                    return ret;
+                }
+            } else {
+                // This a clustered column so index just point to data
+                idx->data = col;
+                idx->pos = NULL;
             }
             col->index->index = idx;
 
@@ -252,33 +257,34 @@ status sync_table(table* tbl){
                 write_tree(data, idx);
 
                 free_btree(idx);
-                free(idx);
             }
             else if (tbl->col[i]->index->type == SORTED) {
-                // Write out the SortedIndex
+                // Write out the SortedIndex only if you're not clustered
                 SortedIndex* idx = tbl->col[i]->index->index;
+                if (idx->data != tbl->cluster_column) {
 
-                if (tbl->col[i]->count != fwrite(idx->data, sizeof(Data), tbl->col[i]->count, data)) {
-                    s.code = ERROR;
-                    s.error_message = "Could not write data to file!";
-                    log_err("Could not write data to file!");
-                    fclose(data);
-                    return s;
+                    if (tbl->col[i]->count != fwrite(idx->data, sizeof(Data), tbl->col[i]->count, data)) {
+                        s.code = ERROR;
+                        s.error_message = "Could not write data to file!";
+                        log_err("Could not write data to file!");
+                        fclose(data);
+                        return s;
+                    }
+
+                    if (tbl->col[i]->count != fwrite(idx->pos, sizeof(Data), tbl->col[i]->count, data)) {
+                        s.code = ERROR;
+                        s.error_message = "Could not write data to file!";
+                        log_err("Could not write data to file!");
+                        fclose(data);
+                        return s;
+                    }
+
+                    // Free the structure.
+                    free(idx->pos);
+                    free(idx->data);
                 }
 
-                if (tbl->col[i]->count != fwrite(idx->pos, sizeof(Data), tbl->col[i]->count, data)) {
-                    s.code = ERROR;
-                    s.error_message = "Could not write data to file!";
-                    log_err("Could not write data to file!");
-                    fclose(data);
-                    return s;
-                }
 
-
-                // Free the structure.
-                free(idx->pos);
-                free(idx->data);
-                free(idx);
             }
             else {
                 log_err("Unsupported index type for permission");
@@ -291,14 +297,6 @@ status sync_table(table* tbl){
         // Free the column.
         free(tbl->col[i]->name);
         free(tbl->col[i]->data);
-        if (tbl->col[i]->index) {
-            if (tbl->col[i]->index->type == B_PLUS_TREE) {
-                // TODO (FREE THE B_PLUS TREE) -- also, write it out to
-                free(tbl->col[i]->index->index);
-            }
-            free(tbl->col[i]->index);
-        }
-        free(tbl->col[i]->index);
         free(tbl->col[i]);
         fclose(data);
     }
@@ -332,7 +330,7 @@ status sync_db(db* db) {
         }
         // Write out the name of the cluster column, if any
         if (db->tables[i]->cluster_column) {
-            if (fprintf(mfile, "%s ", db->tables[i]->cluster_column->name) > 0) {
+            if (fprintf(mfile, "%s ", db->tables[i]->cluster_column->name) < 0) {
                 log_err("Unable write to file %s\n", fname);
                 s.code = ERROR;
                 s.error_message = "Unable to write to file";
@@ -341,7 +339,7 @@ status sync_db(db* db) {
             }
         }
         else {
-            if (fprintf(mfile, "%s ", "null") > 0) {
+            if (fprintf(mfile, "%s ", "null") < 0) {
                 log_err("Unable write to file %s\n", fname);
                 s.code = ERROR;
                 s.error_message = "Unable to write to file";
@@ -562,86 +560,6 @@ status create_index(column* col, IndexType type)
     return global;
 }
 
-// Merges the subsections of the input data array.
-// start - the starting index of the left side
-// end - the final (not-inclusive) index of the right
-// mid - the starting index of the right.
-// Keeps track of swapping positions using pos, which is
-//      assumed to mirror A.
-// Assumes data contains integers.
-void merge(Data* A, Data* pos, int start, int mid, int end) {
-    // Assume that [start, mid] sorted and [mid + 1,end] sorted.
-    int i = start;
-    int j = mid + 1;
-    int k = 0;
-
-    // Allocate space to temporarily hold the results.
-    Data* tmp = malloc(sizeof(Data) * (end - start + 1));
-    Data* tpos = malloc(sizeof(Data) * (end - start + 1));
-    while (i <= mid && j <= end) {
-        if (A[i].i < A[j].i) {
-            tpos[k] = pos[i];
-            tmp[k++] = A[i++];
-        }
-        else {
-            tpos[k] = pos[j];
-            tmp[k++] = A[j++];
-        }
-    }
-
-    // Iterate over the i
-    while (i <= mid) {
-        tpos[k] = pos[i];
-        tmp[k++] = A[i++];
-    }
-
-    // Iterate over the j
-    while (j <= end) {
-        tpos[k] = pos[j];
-        tmp[k++] = A[j++];
-    }
-
-    // Now we copy the results back into A assuming the spaces are continguous.
-    while (--k >= 0) {
-        A[start + k] = tmp[k];
-        pos[start + k] = tpos[k];
-    }
-}
-
-// Recursive function to sort a column along with an array of positions.
-void mergesort(Data* A, Data* pos, int start, int end) {
-    // Array of length 1 is already sorted.
-    if (end - start + 1 < 2) {
-        return;
-    }
-
-    // Otherwise split in half.
-    int mid = (end + start) / 2;
-
-    // Mergesort each half
-    mergesort(A, pos, start, mid);
-    mergesort(A, pos, mid + 1, end);
-
-    // And merge the two
-    merge(A, pos, start, mid, end);
-}
-
-
-// Similar to the xrange function in python, allocates a
-// column with 0...n-1 integers.
-column* xrange(size_t n){
-    column* res = calloc(1, sizeof(struct column));
-    res->data = calloc(n, sizeof(Data));
-    for (size_t i = 0; i < n; i++) {
-        res->data[i].i = i;
-    }
-    res->type = INT;
-    res->count = n;
-    res->size = n;
-
-    return res;
-}
-
 // Copies the column data in c into a new column.
 column* copycolumn(column* col) {
     column* res = calloc(1 ,sizeof(struct column));
@@ -660,69 +578,86 @@ column* copycolumn(column* col) {
 // Reclusters a single column.
 status recluster_col(column* col, IndexType newtype) {
     status ret;
-    if (newtype == SORTED) {
-        Node* idx = col->index->index;
+    // Only if we're changing types
+    if (newtype != col->index->type) {
 
-        // Create the new SortedIndex
-        SortedIndex* idx2 = calloc(1, sizeof(SortedIndex));
-        idx2->data = calloc(1, sizeof(struct column));
-        idx2->data->data = calloc(col->count, sizeof(Data));
-        idx2->pos = calloc(1, sizeof(struct column));
-        idx2->pos->data = calloc(col->count, sizeof(Data));
+        if (newtype == SORTED) {
+            Node* idx = col->index->index;
 
-        extract_data(idx, idx2->data->data, idx2->pos->data);
+            // Create the new SortedIndex
+            SortedIndex* idx2 = calloc(1, sizeof(SortedIndex));
+            idx2->data = calloc(1, sizeof(struct column));
+            idx2->data->data = calloc(col->count, sizeof(Data));
+            idx2->pos = calloc(1, sizeof(struct column));
+            idx2->pos->data = calloc(col->count, sizeof(Data));
 
-        // Free the tree
-        free_btree(idx);
-        free(idx);
+            extract_data(idx, idx2->data->data, idx2->pos->data);
 
-        // Set the new index
-        col->index->index = idx2;
-        col->index->type = SORTED;
+            // Free the tree
+            free_btree(idx);
+            free(idx);
 
-        ret.code = OK;
-        return ret;
+            // Set the new index
+            col->index->index = idx2;
+            col->index->type = SORTED;
+
+            ret.code = OK;
+            return ret;
+        }
+        else if (newtype == B_PLUS_TREE) {
+            SortedIndex* idx = col->index->index;
+
+            Node* root = calloc(1, sizeof(Node));
+
+            // Especial case the cluster node. If pos is null, range it.
+            if (!idx->pos) {
+                idx->pos = xrange(idx->data->count);
+            }
+            bulk_load(idx->data->data, idx->pos->data, idx->data->count, root);
+
+            // Free the results (don't free everything if we're a cluster!)
+            if (idx->pos) {
+                free(idx->data->data);
+                // free(idx->data);
+                free(idx->pos->data);
+                free(idx->pos);
+            }
+            free(idx);
+
+            // Reset the parameters.
+            col->index->index = root;
+            col->index->type = B_PLUS_TREE;
+            ret.code = OK;
+            return ret;
+        }
+        else {
+            log_err("Unsupported index type! Cannot recluster");
+            ret.code = ERROR;
+            ret.error_message = "Unsupported index type!\n";
+            return ret;
+        }
     }
-    else if (newtype == B_PLUS_TREE) {
-        // TODO create a bplus tree!
-        // We we just need to create a btree on the sorted data.
-        SortedIndex* idx = col->index->index;
-
-        Node* root = calloc(1, sizeof(Node));
-        bulk_load(idx->data->data, idx->pos->data, idx->data->count, root);
-
-        // Free the results
-        free(idx->data->data);
-        free(idx->data);
-        free(idx->pos->data);
-        free(idx->pos);
-        free(idx);
-
-        // Reset the parameters.
-        col->index->index = root;
-        col->index->type = B_PLUS_TREE;
-        ret.code = OK;
-        return ret;
-    }
-    else {
-        log_err("Unsupported index type! Cannot recluster");
-        ret.code = ERROR;
-        ret.error_message = "Unsupported index type!\n";
-        return ret;
-    }
-
+    ret.code = OK;
     return ret;
 }
 
+// TODO: reclustering if the index already exists sorted doesn't mean much, just changing
+// types.
 status recluster(table* tbl, IndexType newtype) {
     // Let's recluster only if the current type does not match the new type.
-    return recluster_col(tbl->cluster_column, newtype);
+    if (tbl->cluster_column->index->type != newtype) {
+        return recluster_col(tbl->cluster_column, newtype);
+    }
+    status s;
+    s.code = OK;
+    log_info("Reclustering to the same index!");
+    return s;
 }
 
 // We add secondary index to the column.
 status create_secondary_index(column* col, IndexType type) {
     status ret;
-    // If we have a previous index, then we recluster!
+    // If we have a previous index that's different!
     if (col->index) {
         return recluster_col(col, type);
     }
@@ -812,6 +747,39 @@ status cluster_table(table* tbl) {
             free(r);
             r = NULL;
         }
+
+        // We need to reindex columns with indexes.
+        if(column->index) {
+            // We free the index depending on type and recreate it
+            IndexType type = column->index->type;
+            if (column->index->type == SORTED) {
+                SortedIndex* idx = column->index->index;
+                if (idx->pos) {
+                    free(idx->data->data);
+                    free(idx->data);
+                    free(idx->pos->data);
+                    free(idx->pos);
+                }
+            }
+            else if (column->index->type == B_PLUS_TREE) {
+                Node* idx = column->index->index;
+                free_btree(idx);
+            }
+            else {
+                log_err("Unsupported index type");
+                free(pos);
+                s.code = ERROR;
+                return s;
+            }
+            free(column->index);
+            column->index = NULL;
+            s = create_secondary_index(column, type);
+            if (s.code != OK) {
+                log_err("Could not create secondary index!");
+                free(pos);
+                return s;
+            }
+        }
     }
 
     free(pos);
@@ -823,14 +791,15 @@ status cluster_table(table* tbl) {
 // Column is also expected to be the clustered index, so we return the
 // index for the clustered table!
 size_t find_pos(column* col, Data data) {
-    if (!col->index->index) {
+    if (!col->index || !col->index->index) {
         log_err("No index exists for col %s. %s, line %d\n",
             col->name, __func__, __LINE__);
         return -1;
     }
     if (col->index->type == SORTED) {
         SortedIndex* idx = col->index->index;
-        return find_index(idx->data->data, 0, col->count - 1, data, col->count - 1);
+        return find_index(idx->data->data, 0, (col->count == 0) ? 0 : col->count - 1,
+            data, col->count - 1);
     }
     else if (col->index->type == B_PLUS_TREE) {
         Node* tmp;
@@ -896,11 +865,20 @@ status insert_pos(column *col, size_t pos, Data data) {
     if (col->index && col->index->index) {
         if (col->index->type == SORTED) {
             SortedIndex* idx = (SortedIndex*) col->index->index;
+            // If the index data is null and pos in null, we have a clustered column
+            // to which a new element has been added. Repoint to it.
+            if (!idx->data && !idx->pos) {
+                log_info("Column %s is a primary sorted column. New element added.",
+                    col->name);
+                idx->data = col;
+            }
             // We only need to do stuff for an unclustered column
             if (idx->data != col &&
                 idx->pos != NULL) {
                 // The first step is inserting the value into the sorted array.
-                size_t sorted_pos = find_pos(idx->data, data);
+                size_t sorted_pos = find_index(idx->data->data, 0,
+                    (idx->data->count == 0) ? 0 : idx->data->count - 1,
+                    data, idx->data->count);
                 ret = insert_into_column(idx->data, data, sorted_pos);
                 if (ret.code != OK) {
                     ret.error_message = "Failed to insert into sorted column index.";
@@ -1042,77 +1020,132 @@ status index_scan(comparator* f, column* col, result** r, Data* pos)
     status ret;
     // size_t size = (*r)->num_tuples;
     size_t res_pos = 0;
+    Data* new_pos = calloc(col->count, sizeof(Data));
+    size_t new_pos_count = 0;
 
-    // Extract the min/max from the operator, if possible, so we can find their indexes
-    size_t min_index = 0;
-    size_t max_index = col->count - 1;
+    // Sorted column so extract new_pos
+    if (col->index->type == SORTED) {
+        // Extract the min/max from the operator, if possible, so we can find their indexes
+        size_t min_index = 0;
+        size_t max_index = col->count - 1;
+        SortedIndex* sorted = (SortedIndex*) col->index->index;
 
-    // Sorted column
-    // TODO(luisperez: Deal with BTree)
-    // We assume that we have a sorted index column.
-    SortedIndex* sorted = (SortedIndex*) col->index->index;
+        // We assume only the first two relevant matter.
+        while (f) {
+            if (f->type == LESS_THAN && max_index == col->count - 1) {
+                Data max;
+                max.i = f->p_val;
+                max_index = find_index(sorted->data->data, 0,
+                    (sorted->data->count == 0) ? 0 : sorted->data->count - 1,
+                    max, sorted->data->count);
 
-    // We assume only the first two relevant matter.
-    while (f) {
-        if (f->type == LESS_THAN && min_index == 0) {
-            Data max;
-            max.i = f->p_val;
-            max_index = find_index(sorted->data->data, 0, sorted->data->count - 1,
-                max, sorted->data->count);
-
-            // This is the index for the sorted data!
+                // This is the index for the sorted data!
+            }
+            else if (f->type == (GREATER_THAN | EQUAL) && min_index == 0) {
+                Data min;
+                min.i = f->p_val;
+                min_index = find_index(sorted->data->data, 0,
+                    (sorted->data->count == 0) ? 0 : sorted->data->count - 1,
+                    min, sorted->data->count);
+            }
+            f = f->next_comparator;
         }
-        else if (f->type == (GREATER_THAN | EQUAL) && max_index == col->count - 1) {
-            Data min;
-            min.i = f->p_val;
-            min_index = find_index(sorted->data->data, 0, sorted->data->count - 1,
-                min, sorted->data->count);
+
+        // Clustered.
+        if (!sorted->pos && sorted->data == col) {
+            // Special case when we are running a scan over the clustered column.
+            for(size_t i = min_index; i < max_index; i++) {
+                // Return the clustered position index.
+                new_pos[new_pos_count++].i = i;
+            }
         }
-        f = f->next_comparator;
+        // Secondary index!
+        else {
+            for(size_t i = min_index; i < max_index; i++) {
+                // Return the clustered position index.
+                new_pos[new_pos_count++] = sorted->pos->data[i];
+            }
+        }
+    }
+    // TOOD(luisperez): Deal with btree scan to extract new_pos
+    else if (col->index->type == B_PLUS_TREE) {
+
+        size_t min_index = 0;
+        size_t max_index = col->count - 1;
+        Node* root = (Node*) col->index->index;
+        Node* min_leaf = NULL;
+        Node* max_leaf = NULL;
+
+        // We assume only the first two relevant matter.
+        while (f) {
+            if (f->type == LESS_THAN && max_index == col->count - 1) {
+                Data max;
+                max.i = f->p_val;
+                max_index = find_element_tree(max, root, &max_leaf);
+
+                // This is the index for the sorted data!
+            }
+            else if (f->type == (GREATER_THAN | EQUAL) && min_index == 0) {
+                Data min;
+                min.i = f->p_val;
+                min_index = find_element_tree(min, root, &min_leaf);
+            }
+            f = f->next_comparator;
+        }
+
+        // We don't differentiate between clustered and unclustered indexes?
+        while (min_leaf != max_leaf) {
+            while (min_index < min_leaf->count) {
+                new_pos[new_pos_count++] = min_leaf->children->keys[min_index++];
+            }
+            min_leaf = min_leaf->next_link;
+            min_index = 0;
+        }
+
+        // We reached the final node!
+        while (min_index < max_index) {
+            new_pos[new_pos_count++] = min_leaf->children->keys[min_index++];
+        }
+
+    }
+    else {
+        log_err("Index type not supported.");
+        ret.code = ERROR;
+        ret.error_message = "Do not support requested index.";
+        return ret;
     }
 
-    // This is a sequential scan, we just need to find a good starting point.
-    if (!pos) {
-        // Clustered.
-        if (!sorted->pos || sorted->data == col) {
-            // Special case when we are running a scan over the clustered column.
-            if (!sorted->pos) {
-                for(size_t i = min_index; i < max_index; i++) {
-                    // Return the clustered position index.
-                    (*r)->payload[res_pos++].i = i;
-                }
+    // We need to intersect the results because we've achieved good results.
+    if (pos) {
+        // Mergesort with respect to the other
+        mergesort(pos, NULL, 0, (*r)->num_tuples - 1);
+        mergesort(new_pos, NULL, 0, new_pos_count - 1);
+
+        // Now we can run a modified version of merge!
+        size_t i = 0;
+        size_t j = 0;
+        while (i < (*r)->num_tuples && j < new_pos_count) {
+            if (pos[i].i > new_pos[j].i) {
+                j++;
+            }
+            else if (pos[i].i < new_pos[j].i) {
+                i++;
             }
             else {
-                for(size_t i = min_index; i < max_index; i++) {
-                    // Return the clustered position index.
-                    (*r)->payload[res_pos++] = sorted->pos->data[i];
-                }
+                (*r)->payload[res_pos++] = pos[i];
+                i++;
+                j++;
             }
         }
+        // We ran out of one so we're out!
     }
-    // TODO this does not get run, as we maintain normal shit.
-    // for the case when we're given a pos vector!
-    // This is mentioned in the TODO for the SortedIndex.
-    // Currently, we simply don't deal with this issue?
-    // This code here is never run because we do a normal sequential
-    // scan in the case where pos is given. See col_scan for details.
+    // We just copy newpos over the payload!
     else {
-        // Let's assume that pos is also sorted so we can make this efficiently
-        // TODO(luisperes): Deal with the case where pos isn't sorted?
-        Data max_index_data;
-        Data min_index_data;
-        max_index_data.i = max_index;
-        min_index_data.i = min_index;
-        size_t min_pos_index = find_index(pos, 0, (*r)->num_tuples - 1,
-            min_index_data, (*r)->num_tuples);
-        size_t max_pos_index = find_index(pos, 0, (*r)->num_tuples - 1,
-            max_index_data, (*r)->num_tuples);
-        for (size_t ii = min_pos_index; ii < max_pos_index; ii++) {
-            // We index pos, which
-            (*r)->payload[res_pos++] = pos[ii];
+        for(size_t i = 0; i < new_pos_count; i++) {
+            (*r)->payload[res_pos++] = new_pos[i];
         }
-
     }
+
 
     (*r)->num_tuples = res_pos;
     ret.code = OK;
@@ -1141,7 +1174,7 @@ status col_scan(comparator* f, column* col, result** r)
 
     // Check if we have an index on this column.
     // TODO(we are only dealing with full column scans!)
-    if (!pos && col->index && col->index->index) {
+    if (col->index && col->index->index) {
         return index_scan(f, col, r, pos);
     }
 
@@ -1154,8 +1187,16 @@ status col_scan(comparator* f, column* col, result** r)
             }
         }
     }
+    // We're note accessing a column directly!
+    else if (!col->name) {
+        for(size_t ii = 0; ii < (*r)->num_tuples; ii++) {
+            if (check(f, col->data[ii].i)) {
+                (*r)->payload[res_pos++] = pos[ii];
+            }
+        }
+    }
 
-    // We use the pos indicated in the res.
+    // We use the pos indicated in the res to access the column.
     else {
         for(size_t ii = 0; ii < (*r)->num_tuples; ii++) {
             if (check(f, col->data[pos[ii].i].i)) {

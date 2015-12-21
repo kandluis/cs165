@@ -56,7 +56,7 @@ dsl** dsl_commands_init(void)
     dsl** commands = calloc(NUM_DSL_COMMANDS, sizeof(dsl*));
 
     for (int i = 0; i < NUM_DSL_COMMANDS; ++i) {
-        commands[i] = malloc(sizeof(dsl));
+        commands[i] = calloc(1, sizeof(dsl));
     }
 
     // Assign the create commands

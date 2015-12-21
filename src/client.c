@@ -156,7 +156,7 @@ int main(void)
 
         // Ignore comments.
         ret = regexec(&regex2, read_buffer, n_matches, &m, 0);
-        if (send_message.length > 1 && ret != 0) {
+    if (send_message.length > 1 && ret != 0) {
             send_to_server(client_socket, &send_message);
 
             // Check to see if the message is a load message. In this case,
@@ -164,7 +164,7 @@ int main(void)
             ret = regexec(&regex1, read_buffer, n_matches, &m, 0);
             // If we have  match, we want to open the file and stream it to the server.
             if (ret == 0) {
-                char* cmd = malloc(strlen(read_buffer) + 1);
+                char* cmd = calloc(strlen(read_buffer) + 1, sizeof(char));
                 strncpy(cmd, read_buffer, strlen(read_buffer) + 1);
 
                 process_load_command(cmd, client_socket, &send_message);

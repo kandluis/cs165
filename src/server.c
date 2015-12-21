@@ -284,7 +284,7 @@ void load_data(int client_socket, message* recv_message){
     }
 
     // Let's extract the table name.
-    char* str_cpy = malloc(strlen(cols[0]->name) + 1);
+    char* str_cpy = calloc(strlen(cols[0]->name) + 1, sizeof(char));
     strncpy(str_cpy, cols[0]->name, strlen(cols[0]->name) + 1);
 
     // Now we split on periods to extract table name db.tbl.col

@@ -65,16 +65,61 @@ clean:
 distclean: clean
 	rm -rf $(DEPSDIR)
 
-test08: ./client < ../project_tests/test08.dsl
+test1:
+	./client < ../project_tests/test1.txt
 
-test09: ./client < ../project_tests/test08.dsl
+test2:
+	./client < ../project_tests/test2.txt
 
-test10: ./client < ../project_tests/test08.dsl
+test3:
+	./client < ../project_tests/test3.txt
 
-test11: ./client < ../project_tests/test08.dsl
+test4:
+	./client < ../project_tests/test4.txt
 
-test12: ./client < ../project_tests/test08.dsl
+test5:
+	./client < ../project_tests/test5.txt
 
-test13: ./client < ../project_tests/test08.dsl
+test6:
+	./client < ../project_tests/test6.txt
+
+test7:
+	./client < ../project_tests/test7.txt
+
+test8:
+	./client < ../project_tests/test08.dsl
+
+test9:
+	./client < ../project_tests/test09.dsl
+
+test10:
+	./client < ../project_tests/test10.dsl
+
+test11:
+	./client < ../project_tests/test11.dsl
+
+test12:
+	./client < ../project_tests/test12.dsl
+
+test13:
+	./client < ../project_tests/test13.dsl
+
+test14:
+	./client < ../project_tests/test14.dsl
+
+test15:
+	./client < ../project_tests/test15.dsl
+
+test16:
+	./client < ../project_tests/test16.dsl
+
+test17:
+	./client < ../project_tests/test17.dsl
+
+test18:
+	./client < ../project_tests/test18.dsl
+
+test19:
+	./client < ../project_tests/test19.dsl
 
 .PHONY: all clean distclean

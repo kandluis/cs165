@@ -57,4 +57,12 @@ char* copystr(const char* src);
 // Returns the smallest index possible for insertion to mainted sortedness.
 size_t find_index(Data* array, size_t start, size_t end, Data el, size_t size);
 
+// Recursive function to sort a column along with an array of positions.
+// Ignores pos if it is NULL and then behaves as normal mergesort.
+void mergesort(Data* A, Data* pos, int start, int end);
+
+// Similar to the xrange function in python, allocates a
+// column with 0...n-1 integers.
+column* xrange(size_t n);
+
 #endif /* __UTILS_H__ */

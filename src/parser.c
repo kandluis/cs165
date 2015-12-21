@@ -82,7 +82,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         changed = 1;
 
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // This gives us everything inside the (db,"<db_name>")
@@ -142,7 +142,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         changed = 1;
 
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // This gives us everything inside the (table, <tbl_name>, <db_name>, <count>)
@@ -220,7 +220,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         changed = 1;
 
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // This gives us everything inside the (col, <col_name>, <tbl_name>, unsorted)
@@ -341,7 +341,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         changed = 1;
 
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // This gives us everything inside the (<tbl_name>, [INT1], [INT2], ...)
@@ -402,7 +402,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
     } else if (d->g == SELECT_POS || d->g == SELECT_COLUMN) {
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // We split on the equals sign <vec_pos>=select([<posn_vec>, ]<col_var>,<low>,<high>)
@@ -527,7 +527,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
     }
     else if (d->g == FETCH) {
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // We split on the equals sign <vec_pos>=fetch(<col_var>,<vec_pos>)
@@ -597,7 +597,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
     }
     else if (d->g == EXTREME) {
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // We split on the equals sign <[min_val|max_val]>=min(<vec_val>)
@@ -716,7 +716,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
     }
     else if (d->g == EXTREME_INDEX) {
          // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // We split on the equals sign <min_pos>,<min_val>=min(<vec_pos>,<vec_val>)
@@ -866,7 +866,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
 
     else if (d->g == AVERAGE) {
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // We split on the equals sign <scl_val>=avg(<vec_val>)
@@ -937,7 +937,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
     }
     else if (d->g == VECTOR_OPERATION) {
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // We split on the equals sign <vec_val>=[add|sub](<vec_val1>,<vec_val2>)
@@ -1022,7 +1022,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
     else if (d->g == TUPLE) {
 
         // Create a working copy, +1 for '\0'
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // Now we extract everything inside tuple(<vec_val1>,...)
@@ -1105,7 +1105,7 @@ status parse_dsl(char* str, dsl* d, db_operator* op)
         status ret;
 
         // Crete a working copy
-        char* str_cpy = malloc(strlen(str) + 1);
+        char* str_cpy = calloc(strlen(str) + 1, sizeof(char));
         strncpy(str_cpy, str, strlen(str) + 1);
 
         // This gives us everything inside the (idx,<col_name>,<type>)

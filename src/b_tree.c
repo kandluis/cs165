@@ -78,7 +78,7 @@ size_t find_element_tree(Data el, Node* root, Node** node) {
   }
 
   // Find the index of our value in either the internal node or leaf node!
-  size_t data_idx = find_index(root->keys, 0, root->count - 1, el, root->count);
+  size_t data_idx = find_index(root->keys, 0, (root->count == 0) ? 0 : root->count - 1,el, root->count);
 
   if (root->type == Leaf) {
     // If the data_idx is the col count, we return that index.
@@ -96,7 +96,7 @@ size_t find_element_tree(Data el, Node* root, Node** node) {
 
     // Return the clustered index for the base data
     *node = root;
-    return root->children->keys[data_idx].i;
+    return data_idx;
   }
 
 
@@ -211,14 +211,18 @@ void free_btree(Node* root) {
     return;
   }
 
-  // Free all of the children if we have any!
-  if (root->children) {
-    for(size_t i = 0; i < FANOUT; i++) {
-      free_btree(&root->children[i]);
+  // Free a leaf
+  if (root->type == Internal) {
+    // Free all of the children if we have any!
+    if (root->children) {
+      for(size_t i = 0; i < FANOUT; i++) {
+        free_btree(&root->children[i]);
+      }
     }
-    // Now we free our children (the contiguous block we had allocated)
-    free(root->children);
   }
+
+  // Now we free our children (the contiguous block we had allocated)
+  free(root->children);
 
   // Only the root needs to free itself, so we do this outside the function.
 }
@@ -270,7 +274,7 @@ void write_tree(FILE* fp, Node* root) {
 
   // Write out the pointers depending on type!
   if (root->type == Leaf) {
-    if (1 != fwrite(root, sizeof(Node), 1, fp)) {
+    if (1 != fwrite(root->children, sizeof(Node), 1, fp)) {
       log_err("Failed writing out values for leaf!");
     }
   }
@@ -294,7 +298,7 @@ void read_tree(FILE* fp, Node* root) {
   // Check to see if it's a leaf node
   if (root->type == Leaf) {
     root->children = calloc(1, sizeof(Node));
-    if (1 != fread(root->children, sizeof(Node*), 1, fp)) {
+    if (1 != fread(root->children, sizeof(Node), 1, fp)) {
       log_err("Unable to read children node!");
     }
   }
