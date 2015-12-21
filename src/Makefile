@@ -123,7 +123,7 @@ test19:
 	./client < ../project_tests/test19.dsl
 
 test20:
-	./client < ../project_tests/test21.dsl
+	./client < ../project_tests/test20.dsl
 
 test21:
 	./client < ../project_tests/test21.dsl
