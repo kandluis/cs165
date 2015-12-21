@@ -10,10 +10,10 @@ debug: client server
 CC = gcc -std=c99 -g -ggdb3
 
 # Default optimization level
-O ?= 0
+O ?= 3
 
 # Flags and other libraries
-override CFLAGS += -Wall -Wextra -pedantic -pthread -O$(O) -I$(INCLUDES) -DLOG -DLOG_ERR -DLOG_INFO
+override CFLAGS += -Wall -Wextra -pedantic -pthread -O$(O) -I$(INCLUDES)
 LDFLAGS =
 LIBS =
 INCLUDES = include
@@ -121,5 +121,8 @@ test18:
 
 test19:
 	./client < ../project_tests/test19.dsl
+
+test21:
+	./client < ../project_tests/test21.dsl
 
 .PHONY: all clean distclean
