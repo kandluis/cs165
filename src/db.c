@@ -375,7 +375,7 @@ status sync_db(db* db) {
                 return s;
             }
         }
-        char* index;
+        char* index = "";
         if (!db->tables[i]->col[db->tables[i]->col_count - 1]->index) {
             index = "unsorted";
         }
