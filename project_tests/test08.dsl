@@ -26,4 +26,4 @@ create(idx,db1.tbl2.col1,btree)
 create(idx,db1.tbl2.col2,btree)
 --
 -- Testing that the data and their indexes are durable on disk.
--- shutdown
+shutdown
